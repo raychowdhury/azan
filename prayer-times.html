@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Azan Times — Prayer Schedule</title>
+<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #0a0e1a;
+    --bg-card: rgba(255,255,255,0.04);
+    --bg-card-hover: rgba(255,255,255,0.07);
+    --gold: #d4a853;
+    --gold-light: #f0d68a;
+    --gold-dim: rgba(212,168,83,0.15);
+    --text-primary: #e8e4dc;
+    --text-secondary: rgba(232,228,220,0.55);
+    --text-muted: rgba(232,228,220,0.3);
+    --border: rgba(212,168,83,0.12);
+    --glow: rgba(212,168,83,0.25);
+    --active-prayer: rgba(212,168,83,0.12);
+    --success: #6bcf8e;
+    --sunrise-color: #f0884a;
+    --sunset-color: #c75d8a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Ambient background */
+  body::before {
+    content: '';
+    position: fixed;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: 
+      radial-gradient(ellipse at 20% 20%, rgba(212,168,83,0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(100,80,160,0.05) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, rgba(212,168,83,0.03) 0%, transparent 70%);
+    z-index: 0;
+    animation: ambientShift 20s ease-in-out infinite alternate;
+  }
+
+  @keyframes ambientShift {
+    0% { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(-2%, -1%) scale(1.05); }
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 40px 20px 60px;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 40px;
+    animation: fadeUp 0.8s ease-out;
+  }
+
+  .header .icon {
+    font-size: 42px;
+    margin-bottom: 12px;
+    filter: drop-shadow(0 0 20px var(--glow));
+  }
+
+  .header h1 {
+    font-family: 'Amiri', serif;
+    font-size: 2.4rem;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: 0.02em;
+    margin-bottom: 6px;
+  }
+
+  .header p {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    font-weight: 300;
+  }
+
+  /* Search Section */
+  .search-section {
+    margin-bottom: 32px;
+    animation: fadeUp 0.8s ease-out 0.1s both;
+  }
+
+  .search-row {
+    display: flex;
+    gap: 10px;
+  }
+
+  .search-input-wrap {
+    flex: 1;
+    position: relative;
+  }
+
+  .search-input-wrap svg {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+
+  .search-input {
+    width: 100%;
+    padding: 14px 16px 14px 46px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    color: var(--text-primary);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.95rem;
+    outline: none;
+    transition: all 0.3s ease;
+  }
+
+  .search-input::placeholder { color: var(--text-muted); }
+  .search-input:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px var(--gold-dim);
+    background: rgba(255,255,255,0.06);
+  }
+
+  .btn {
+    padding: 14px 22px;
+    border: none;
+    border-radius: 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+
+  .btn-search {
+    background: linear-gradient(135deg, var(--gold), #b8903e);
+    color: #1a1400;
+  }
+
+  .btn-search:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px rgba(212,168,83,0.3);
+  }
+
+  .btn-locate {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+  }
+
+  .btn-locate:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--gold);
+  }
+
+  .btn svg { width: 16px; height: 16px; }
+
+  /* Method selector */
+  .method-row {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .method-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .method-select {
+    flex: 1;
+    min-width: 200px;
+    padding: 10px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .method-select:focus {
+    border-color: var(--gold);
+  }
+
+  .method-select option {
+    background: #1a1e2e;
+    color: var(--text-primary);
+  }
+
+  /* Location Banner */
+  .location-banner {
+    text-align: center;
+    margin-bottom: 28px;
+    animation: fadeUp 0.6s ease-out;
+  }
+
+  .location-banner .city-name {
+    font-family: 'Amiri', serif;
+    font-size: 1.7rem;
+    color: var(--text-primary);
+    font-weight: 700;
+  }
+
+  .location-banner .date-info {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    margin-top: 4px;
+    font-weight: 300;
+  }
+
+  .location-banner .hijri {
+    color: var(--gold);
+    font-family: 'Amiri', serif;
+    font-size: 1rem;
+    margin-top: 2px;
+  }
+
+  /* Sun info strip */
+  .sun-strip {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-bottom: 32px;
+    animation: fadeUp 0.6s ease-out 0.15s both;
+  }
+
+  .sun-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 24px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+  }
+
+  .sun-icon {
+    font-size: 26px;
+    line-height: 1;
+  }
+
+  .sun-detail .sun-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+
+  .sun-detail .sun-time {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin-top: 1px;
+  }
+
+  .sun-item.rise .sun-time { color: var(--sunrise-color); }
+  .sun-item.set .sun-time { color: var(--sunset-color); }
+
+  /* Prayer cards */
+  .prayers-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 32px;
+    animation: fadeUp 0.6s ease-out 0.25s both;
+  }
+
+  .prayer-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    transition: all 0.35s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .prayer-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: transparent;
+    border-radius: 0 3px 3px 0;
+    transition: background 0.35s ease;
+  }
+
+  .prayer-card:hover {
+    background: var(--bg-card-hover);
+    transform: translateX(4px);
+  }
+
+  .prayer-card.active {
+    background: var(--active-prayer);
+    border-color: rgba(212,168,83,0.25);
+  }
+
+  .prayer-card.active::before {
+    background: var(--gold);
+  }
+
+  .prayer-card.next {
+    border-color: rgba(212,168,83,0.3);
+    box-shadow: 0 0 30px rgba(212,168,83,0.08);
+  }
+
+  .prayer-card.next::before {
+    background: var(--gold);
+    box-shadow: 0 0 8px var(--glow);
+  }
+
+  .prayer-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .prayer-icon {
+    font-size: 24px;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.03);
+    border-radius: 12px;
+  }
+
+  .prayer-name {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .prayer-arabic {
+    font-family: 'Amiri', serif;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 1px;
+  }
+
+  .prayer-time {
+    font-size: 1.35rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+    letter-spacing: 0.01em;
+  }
+
+  .prayer-card.next .prayer-time {
+    color: var(--gold-light);
+  }
+
+  .next-badge {
+    display: none;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    background: var(--gold);
+    color: #1a1400;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 700;
+    margin-left: 12px;
+  }
+
+  .prayer-card.next .next-badge {
+    display: inline-block;
+  }
+
+  /* Countdown */
+  .countdown-section {
+    text-align: center;
+    padding: 24px;
+    background: linear-gradient(135deg, rgba(212,168,83,0.08), rgba(212,168,83,0.03));
+    border: 1px solid rgba(212,168,83,0.15);
+    border-radius: 20px;
+    animation: fadeUp 0.6s ease-out 0.35s both;
+  }
+
+  .countdown-label {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-secondary);
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .countdown-prayer {
+    font-family: 'Amiri', serif;
+    font-size: 1.3rem;
+    color: var(--gold);
+    margin-bottom: 8px;
+  }
+
+  .countdown-timer {
+    font-size: 2.2rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+    letter-spacing: 0.04em;
+  }
+
+  .countdown-timer span {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 400;
+    margin: 0 2px;
+  }
+
+  /* Loading / Error */
+  .status-msg {
+    text-align: center;
+    padding: 60px 20px;
+    animation: fadeUp 0.5s ease-out;
+  }
+
+  .status-msg .spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--gold);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+
+  .status-msg p {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+  }
+
+  .status-msg.error p { color: #e07070; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Welcome State */
+  .welcome-state {
+    text-align: center;
+    padding: 60px 20px;
+    animation: fadeUp 0.6s ease-out;
+  }
+
+  .welcome-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.8; }
+
+  .welcome-title {
+    font-family: 'Amiri', serif;
+    font-size: 1.5rem;
+    color: var(--gold);
+    margin-bottom: 8px;
+  }
+
+  .welcome-text {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+
+  .welcome-text strong { color: var(--text-primary); }
+
+  .error-box {
+    text-align: center;
+    padding: 40px 20px;
+    animation: fadeUp 0.5s ease-out;
+  }
+
+  .error-box .error-icon { font-size: 36px; margin-bottom: 12px; }
+  .error-box .error-title { color: var(--text-primary); font-size: 1.05rem; font-weight: 600; margin-bottom: 6px; }
+  .error-box .error-detail { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; }
+  .error-box .error-hint { color: var(--gold); font-size: 0.85rem; margin-top: 16px; font-weight: 500; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+  }
+
+  .footer a {
+    color: var(--gold);
+    text-decoration: none;
+  }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .container { padding: 24px 16px 40px; }
+    .header h1 { font-size: 1.9rem; }
+    .search-row { flex-direction: column; }
+    .btn { justify-content: center; }
+    .sun-strip { gap: 12px; flex-wrap: wrap; }
+    .sun-item { padding: 10px 18px; flex: 1; min-width: 140px; justify-content: center; }
+    .prayer-card { padding: 14px 18px; }
+    .prayer-time { font-size: 1.15rem; }
+    .countdown-timer { font-size: 1.7rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <div class="icon">🕌</div>
+    <h1>Azan Times</h1>
+    <p>Accurate prayer schedules for any city worldwide</p>
+  </div>
+
+  <!-- Search -->
+  <div class="search-section">
+    <div class="search-row">
+      <div class="search-input-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="search-input" id="cityInput" placeholder="Search city — e.g. Istanbul, Makkah, London..." />
+      </div>
+      <button class="btn btn-search" onclick="searchCity()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Search
+      </button>
+      <button class="btn btn-locate" onclick="useLocation()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+        My Location
+      </button>
+    </div>
+    <div class="method-row">
+      <span class="method-label">Method</span>
+      <select class="method-select" id="methodSelect" onchange="onMethodChange()">
+        <option value="3">Muslim World League</option>
+        <option value="2">Islamic Society of North America (ISNA)</option>
+        <option value="1">University of Islamic Sciences, Karachi</option>
+        <option value="4">Umm Al-Qura University, Makkah</option>
+        <option value="5">Egyptian General Authority of Survey</option>
+        <option value="7">Institute of Geophysics, University of Tehran</option>
+        <option value="8">Gulf Region</option>
+        <option value="9">Kuwait</option>
+        <option value="10">Qatar</option>
+        <option value="11">Majlis Ugama Islam Singapura</option>
+        <option value="12">UOIF — France</option>
+        <option value="13">DIANET — Turkey</option>
+        <option value="14">Spiritual Administration of Muslims, Russia</option>
+        <option value="15">Moonsighting Committee Worldwide</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Dynamic Content -->
+  <div id="content">
+    <div class="welcome-state">
+      <div class="welcome-icon">📍</div>
+      <h2 class="welcome-title">Find Your Prayer Times</h2>
+      <p class="welcome-text">Search for any city or tap <strong>My Location</strong> to get started</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    Powered by <a href="https://aladhan.com/prayer-times-api" target="_blank">Aladhan API</a> · Prayer times based on astronomical calculations
+  </div>
+</div>
+
+<script>
+const PRAYERS = [
+  { key: 'Fajr', name: 'Fajr', arabic: 'الفجر', icon: '🌙' },
+  { key: 'Sunrise', name: 'Sunrise', arabic: 'الشروق', icon: '🌅' },
+  { key: 'Dhuhr', name: 'Dhuhr', arabic: 'الظهر', icon: '☀️' },
+  { key: 'Asr', name: 'Asr', arabic: 'العصر', icon: '🌤️' },
+  { key: 'Maghrib', name: 'Maghrib', arabic: 'المغرب', icon: '🌇' },
+  { key: 'Isha', name: 'Isha', arabic: 'العشاء', icon: '🌑' },
+];
+
+let currentTimings = null;
+let countdownInterval = null;
+let lastSearchParams = null;
+
+function getMethod() {
+  return document.getElementById('methodSelect').value;
+}
+
+function onMethodChange() {
+  if (lastSearchParams) {
+    if (lastSearchParams.type === 'city') {
+      fetchByCity(lastSearchParams.city, lastSearchParams.country);
+    } else {
+      fetchByCoords(lastSearchParams.lat, lastSearchParams.lng);
+    }
+  }
+}
+
+// Geolocation
+function useLocation() {
+  if (!navigator.geolocation) {
+    showError("Geolocation is not supported by your browser.");
+    return;
+  }
+  showLoading("Detecting your location...");
+  navigator.geolocation.getCurrentPosition(
+    pos => fetchByCoords(pos.coords.latitude, pos.coords.longitude),
+    err => {
+      showError("Location access denied. Please search for a city instead.");
+    },
+    { timeout: 10000 }
+  );
+}
+
+function searchCity() {
+  const input = document.getElementById('cityInput').value.trim();
+  if (!input) return;
+  
+  // Try to split "City, Country"
+  const parts = input.split(',').map(s => s.trim());
+  const city = parts[0];
+  const country = parts[1] || '';
+  
+  showLoading(`Searching for ${city}...`);
+  fetchByCity(city, country);
+}
+
+async function fetchByCity(city, country) {
+  lastSearchParams = { type: 'city', city, country };
+  try {
+    const params = new URLSearchParams({
+      city: city,
+      country: country || '',
+      method: getMethod(),
+    });
+    const res = await fetch(`https://api.aladhan.com/v1/timingsByCity?${params}`);
+    const data = await res.json();
+    if (data.code === 200) {
+      renderPrayerTimes(data.data);
+    } else {
+      showError(`Could not find prayer times for "${city}". Try a different city name.`);
+    }
+  } catch (e) {
+    showError("Network error. Please check your connection and try again.");
+  }
+}
+
+async function fetchByCoords(lat, lng) {
+  lastSearchParams = { type: 'coords', lat, lng };
+  try {
+    const params = new URLSearchParams({
+      latitude: lat,
+      longitude: lng,
+      method: getMethod(),
+    });
+    const res = await fetch(`https://api.aladhan.com/v1/timings?${params}`);
+    const data = await res.json();
+    if (data.code === 200) {
+      renderPrayerTimes(data.data);
+    } else {
+      showError("Could not fetch prayer times for your location.");
+    }
+  } catch (e) {
+    showError("Network error. Please check your connection and try again.");
+  }
+}
+
+function renderPrayerTimes(data) {
+  const timings = data.timings;
+  const meta = data.meta;
+  const date = data.date;
+  currentTimings = timings;
+
+  const cityName = meta.timezone ? meta.timezone.split('/').pop().replace(/_/g, ' ') : 'Your Location';
+  const gregDate = date.readable;
+  const hijriDate = `${date.hijri.day} ${date.hijri.month.en} ${date.hijri.year} AH`;
+  const hijriAr = `${date.hijri.day} ${date.hijri.month.ar} ${date.hijri.year}`;
+
+  // Determine next prayer
+  const now = new Date();
+  let nextPrayer = null;
+  for (const p of PRAYERS) {
+    const pTime = parseTime(timings[p.key]);
+    if (pTime > now) {
+      nextPrayer = p.key;
+      break;
+    }
+  }
+
+  let html = `
+    <div class="location-banner">
+      <div class="city-name">${escHtml(cityName)}</div>
+      <div class="date-info">${escHtml(gregDate)}</div>
+      <div class="hijri">${escHtml(hijriAr)} — ${escHtml(hijriDate)}</div>
+    </div>
+
+    <div class="sun-strip">
+      <div class="sun-item rise">
+        <div class="sun-icon">🌅</div>
+        <div class="sun-detail">
+          <div class="sun-label">Sunrise</div>
+          <div class="sun-time">${formatTime(timings.Sunrise)}</div>
+        </div>
+      </div>
+      <div class="sun-item set">
+        <div class="sun-icon">🌇</div>
+        <div class="sun-detail">
+          <div class="sun-label">Sunset</div>
+          <div class="sun-time">${formatTime(timings.Sunset)}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="prayers-grid">
+  `;
+
+  for (const p of PRAYERS) {
+    const isNext = p.key === nextPrayer;
+    const cls = isNext ? 'prayer-card next' : 'prayer-card';
+    html += `
+      <div class="${cls}">
+        <div class="prayer-left">
+          <div class="prayer-icon">${p.icon}</div>
+          <div>
+            <div class="prayer-name">${p.name}<span class="next-badge">Next</span></div>
+            <div class="prayer-arabic">${p.arabic}</div>
+          </div>
+        </div>
+        <div class="prayer-time">${formatTime(timings[p.key])}</div>
+      </div>
+    `;
+  }
+
+  html += `</div>`;
+
+  // Countdown
+  if (nextPrayer) {
+    html += `
+      <div class="countdown-section" id="countdownSection">
+        <div class="countdown-label">Time remaining until</div>
+        <div class="countdown-prayer">${nextPrayer}</div>
+        <div class="countdown-timer" id="countdownTimer">--:--:--</div>
+      </div>
+    `;
+  }
+
+  document.getElementById('content').innerHTML = html;
+
+  // Start countdown
+  if (countdownInterval) clearInterval(countdownInterval);
+  if (nextPrayer) {
+    updateCountdown(nextPrayer);
+    countdownInterval = setInterval(() => updateCountdown(nextPrayer), 1000);
+  }
+}
+
+function updateCountdown(prayerKey) {
+  if (!currentTimings) return;
+  const target = parseTime(currentTimings[prayerKey]);
+  const now = new Date();
+  let diff = Math.floor((target - now) / 1000);
+  
+  if (diff <= 0) {
+    // Refresh data
+    if (lastSearchParams) {
+      if (lastSearchParams.type === 'city') {
+        fetchByCity(lastSearchParams.city, lastSearchParams.country);
+      } else {
+        fetchByCoords(lastSearchParams.lat, lastSearchParams.lng);
+      }
+    }
+    return;
+  }
+
+  const h = Math.floor(diff / 3600);
+  const m = Math.floor((diff % 3600) / 60);
+  const s = diff % 60;
+
+  const el = document.getElementById('countdownTimer');
+  if (el) {
+    el.innerHTML = `${pad(h)}<span>h</span> ${pad(m)}<span>m</span> ${pad(s)}<span>s</span>`;
+  }
+}
+
+function parseTime(timeStr) {
+  // Format: "HH:MM" or "HH:MM (TZ)"
+  const clean = timeStr.replace(/\s*\(.*\)/, '');
+  const [h, m] = clean.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+function formatTime(timeStr) {
+  const clean = timeStr.replace(/\s*\(.*\)/, '');
+  const [h, m] = clean.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${pad(m)} ${ampm}`;
+}
+
+function pad(n) { return String(n).padStart(2, '0'); }
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function showLoading(msg) {
+  document.getElementById('content').innerHTML = `
+    <div class="status-msg">
+      <div class="spinner"></div>
+      <p>${escHtml(msg)}</p>
+    </div>`;
+}
+
+function showError(msg) {
+  document.getElementById('content').innerHTML = `
+    <div class="error-box">
+      <div class="error-icon">😕</div>
+      <div class="error-title">${escHtml(msg)}</div>
+      <div class="error-detail">This can happen if the API is unreachable or the city wasn't found.</div>
+      <div class="error-hint">💡 Try searching for a city above — e.g. "Makkah", "Istanbul", "Cairo"</div>
+    </div>`;
+}
+
+// Enter key to search
+document.getElementById('cityInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') searchCity();
+});
+
+// Auto-detect location on load (silent fail — shows welcome state)
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(
+    pos => fetchByCoords(pos.coords.latitude, pos.coords.longitude),
+    () => { /* silently stay on welcome state */ },
+    { timeout: 8000 }
+  );
+}
+</script>
+
+</body>
+</html>
