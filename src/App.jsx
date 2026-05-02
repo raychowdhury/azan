@@ -63,7 +63,7 @@ export default function App() {
         { timeout: 8000 }
       );
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Countdown interval ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -90,7 +90,7 @@ export default function App() {
     tick();
     countdownRef.current = setInterval(tick, 1000);
     return () => clearInterval(countdownRef.current);
-  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data]);
 
   // ── Schedule azan & notifications ────────────────────────────────────────────
   useEffect(() => {
@@ -118,7 +118,7 @@ export default function App() {
       }
     });
     return () => azanTimers.current.forEach(clearTimeout);
-  }, [data, settings.azanEnabled, settings.notifEnabled, settings.notifMinutes]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data, settings.azanEnabled, settings.notifEnabled, settings.notifMinutes]);
 
   function playAzan(prayerKey) {
     try {
@@ -131,6 +131,7 @@ export default function App() {
   }
 
   function fireNotification(prayerName, minutes) {
+    if (!('Notification' in window)) return;
     if (Notification.permission === 'granted') {
       new Notification('🕌 Azan Times', {
         body: `${prayerName} prayer starts in ${minutes} minute${minutes !== 1 ? 's' : ''}.`,
@@ -163,8 +164,15 @@ export default function App() {
       setData(result);
       setLastSearch(params);
       localStorage.setItem('lastSearch', JSON.stringify(params));
+      localStorage.setItem('lastData', JSON.stringify({ result, ts: Date.now() }));
     } catch (e) {
-      setError(e.message);
+      const cached = loadStorage('lastData', null);
+      if (cached?.result) {
+        setData(cached.result);
+        setError(`Offline — showing cached times from ${new Date(cached.ts).toLocaleString()}`);
+      } else {
+        setError(e.message);
+      }
     } finally {
       setLoading(false);
     }
