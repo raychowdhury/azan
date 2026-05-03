@@ -60,6 +60,14 @@
 /* ─── Reset ──────────────────────────────────────────────────────────────── */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
+html {
+  min-height: 100%;
+  overflow-y: auto;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* ─── Body ───────────────────────────────────────────────────────────────── */
 body {
   font-family: 'DM Sans', sans-serif;
@@ -67,6 +75,8 @@ body {
   color: var(--text-primary);
   min-height: 100vh;
   overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   transition: background 0.4s, color 0.4s;
 }
 
@@ -118,12 +128,17 @@ body::after {
 }
 
 /* ─── Layout ─────────────────────────────────────────────────────────────── */
-.app { position: relative; z-index: 1; }
+.app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  position: relative;
+  z-index: 1;
+}
 
 .container {
   max-width: 800px;
   margin: 0 auto;
-  padding: 36px 20px 64px;
+  padding: calc(36px + env(safe-area-inset-top, 0px)) 20px calc(64px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ─── Header ─────────────────────────────────────────────────────────────── */
@@ -147,9 +162,15 @@ body::after {
   line-height: 1;
 }
 
-.settings-btn {
+.header-actions {
   position: absolute;
   right: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-action {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -163,13 +184,20 @@ body::after {
   backdrop-filter: blur(12px);
 }
 
-.settings-btn:hover {
+.icon-action:hover,
+.icon-action.active {
   border-color: var(--gold);
   color: var(--gold);
   box-shadow: 0 0 16px var(--gold-dim);
 }
 
-.settings-btn svg { width: 18px; height: 18px; }
+.icon-action:nth-child(2):hover {
+  border-color: var(--teal);
+  color: var(--teal-light);
+  box-shadow: 0 0 16px var(--teal-dim);
+}
+
+.icon-action svg { width: 18px; height: 18px; }
 
 .header h1 {
   font-family: 'Amiri', serif;
@@ -215,7 +243,8 @@ body::after {
 }
 
 .search-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: 8px;
 }
 
@@ -1354,22 +1383,42 @@ input:checked + .slider::before { transform: translateX(20px); background: #fff;
 
 /* ─── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 600px) {
-  .container         { padding: 20px 14px 48px; }
-  .header h1         { font-size: 2.1rem; }
-  .search-row        { flex-direction: column; }
-  .btn               { justify-content: center; }
-  .sun-strip         { gap: 10px; flex-wrap: wrap; }
-  .sun-item          { flex: 1; min-width: 130px; justify-content: center; }
-  .prayer-card       { padding: 12px 15px; }
-  .prayer-time       { font-size: 1.08rem; }
-  .countdown-hero    { padding: 22px 16px 18px; }
-  .digit-num         { font-size: 1.95rem; }
-  .digit-block       { min-width: 58px; padding: 10px 12px 7px; }
-  .countdown-name-ar { font-size: 1.3rem; }
-  .countdown-name-en { font-size: 0.9rem; }
-  .hero-icon         { font-size: 34px; width: 70px; height: 70px; }
-  .hero-icon-wrap    { width: 70px; height: 70px; }
-  .settings-panel    { width: 100vw; }
-  .compass-container { width: 220px; height: 220px; }
-  .compass-tick      { transform-origin: 50% 110px; }
+  .container          { padding: max(58px, calc(20px + env(safe-area-inset-top, 0px))) 14px calc(42px + env(safe-area-inset-bottom, 0px)); }
+  .header             { margin-bottom: 18px; }
+  .header-top         { margin-bottom: 8px; }
+  .icon               { font-size: 42px; }
+  .header-actions     { gap: 6px; }
+  .icon-action        { border-radius: 13px; padding: 10px; }
+  .icon-action svg    { width: 18px; height: 18px; }
+  .header h1          { font-size: 2rem; letter-spacing: 0.01em; }
+  .header-arabic      { font-size: 1.08rem; margin-top: 2px; }
+  .header-sub         { font-size: 0.8rem; line-height: 1.35; max-width: 310px; margin: 6px auto 0; }
+  .header-ornament    { margin-top: 8px; }
+  .search-section     { margin-bottom: 18px; }
+  .search-row         { grid-template-columns: 1fr auto; gap: 9px; }
+  .search-input       { min-height: 50px; padding: 13px 14px 13px 42px; font-size: 1rem; border-radius: 15px; }
+  .btn                { min-height: 50px; justify-content: center; padding: 12px 14px; border-radius: 15px; font-size: 0.9rem; }
+  .welcome-state      { padding: 34px 14px 30px; }
+  .welcome-mosque     { font-size: 50px; margin-bottom: 12px; }
+  .welcome-bismillah  { font-size: 1.18rem; margin-bottom: 10px; }
+  .welcome-title      { font-size: 1.38rem; margin-bottom: 8px; }
+  .welcome-text       { font-size: 0.9rem; line-height: 1.55; max-width: 300px; }
+  .welcome-divider    { margin-top: 18px; }
+  .city-name          { font-size: 1.65rem; }
+  .sun-strip          { gap: 10px; flex-wrap: wrap; }
+  .sun-item           { flex: 1; min-width: 130px; justify-content: center; padding: 10px 12px; }
+  .tabs               { border-radius: 14px; }
+  .tab-btn            { padding: 10px 8px; font-size: 0.82rem; }
+  .prayer-card        { padding: 12px 15px; }
+  .prayer-time        { font-size: 1.08rem; }
+  .countdown-hero     { padding: 22px 16px 18px; border-radius: 20px; }
+  .digit-num          { font-size: 1.95rem; }
+  .digit-block        { min-width: 58px; padding: 10px 12px 7px; }
+  .countdown-name-ar  { font-size: 1.3rem; }
+  .countdown-name-en  { font-size: 0.9rem; }
+  .hero-icon          { font-size: 34px; width: 70px; height: 70px; }
+  .hero-icon-wrap     { width: 70px; height: 70px; }
+  .settings-panel     { width: 100vw; padding-top: max(26px, env(safe-area-inset-top, 0px)); }
+  .compass-container  { width: 220px; height: 220px; }
+  .compass-tick       { transform-origin: 50% 110px; }
 }

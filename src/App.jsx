@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import { PRAYERS, METHODS, pad, parseTime, formatTime, getNextPrayer, getActivePrayer, getPrayerProgress } from './utils/prayers';
 import { fetchByCity, fetchByCoords, fetchWeeklyByCity, fetchWeeklyByCoords } from './utils/api';
 import QiblaCompass from './components/QiblaCompass';
 import WeeklyView from './components/WeeklyView';
 
 const AZAN_CDN = 'https://cdn.islamic.network/prayer-times/audio/Mishary_Rashid_Alafasy/mp3/';
+const isNative = Capacitor.isNativePlatform();
+const ReverseGeocoder = registerPlugin('ReverseGeocoder');
+const NOTIFICATION_ID_BASE = 4200;
 
 const defaultSettings = {
   use24h: false,
@@ -19,6 +24,27 @@ function loadStorage(key, fallback) {
   catch { return fallback; }
 }
 
+function searchLabel(params) {
+  if (!params) return '';
+  if (params.label) return params.label;
+  if (params.type === 'city') return [params.city, params.country].filter(Boolean).join(', ');
+  return 'Current Location';
+}
+
+async function nativeLocationLabel(params) {
+  if (!isNative || params.type !== 'coords') return searchLabel(params) || 'Current Location';
+
+  try {
+    const place = await ReverseGeocoder.reverseGeocode({
+      latitude: params.lat,
+      longitude: params.lng,
+    });
+    return place.displayName || [place.city, place.region, place.country].filter(Boolean).slice(0, 2).join(', ') || 'Current Location';
+  } catch {
+    return searchLabel(params) || 'Current Location';
+  }
+}
+
 export default function App() {
   const [data, setData]               = useState(null);
   const [weeklyData, setWeeklyData]   = useState(null);
@@ -29,6 +55,7 @@ export default function App() {
   const [method, setMethod]           = useState(() => loadStorage('method', '3'));
   const [lastSearch, setLastSearch]   = useState(() => loadStorage('lastSearch', null));
   const [activeTab, setActiveTab]     = useState('today');
+  const [showSearch, setShowSearch]   = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [countdown, setCountdown]     = useState({ h: 0, m: 0, s: 0 });
   const [nextPrayer, setNextPrayer]   = useState(null);
@@ -38,6 +65,7 @@ export default function App() {
   const countdownRef   = useRef(null);
   const azanTimers     = useRef([]);
   const audioRef       = useRef(null);
+  const searchInputRef = useRef(null);
 
   // ── Apply theme ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -52,18 +80,12 @@ export default function App() {
   useEffect(() => {
     if (lastSearch) {
       performSearch(lastSearch, false);
-    } else if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        pos => {
-          const params = { type: 'coords', lat: pos.coords.latitude, lng: pos.coords.longitude };
-          setUserCoords({ lat: params.lat, lng: params.lng });
-          performSearch(params, false);
-        },
-        () => {},
-        { timeout: 8000 }
-      );
     }
   }, []);
+
+  useEffect(() => {
+    if (showSearch) searchInputRef.current?.focus();
+  }, [showSearch]);
 
   // ── Countdown interval ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -98,6 +120,21 @@ export default function App() {
     azanTimers.current = [];
     if (!data) return;
 
+    if (isNative) {
+      if (settings.notifEnabled) {
+        scheduleNativeNotifications(data.timings, settings.notifMinutes).catch(() => {});
+      } else {
+        LocalNotifications.getPending()
+          .then(pending => pending.notifications
+            .filter(n => n.id >= NOTIFICATION_ID_BASE && n.id < NOTIFICATION_ID_BASE + 100)
+            .map(n => ({ id: n.id })))
+          .then(notifications => {
+            if (notifications.length) return LocalNotifications.cancel({ notifications });
+          })
+          .catch(() => {});
+      }
+    }
+
     const now = new Date();
     PRAYERS.forEach(prayer => {
       if (!data.timings[prayer.key]) return;
@@ -108,7 +145,7 @@ export default function App() {
       if (settings.azanEnabled && prayer.obligatory) {
         azanTimers.current.push(setTimeout(() => playAzan(prayer.key), msUntil));
       }
-      if (settings.notifEnabled) {
+      if (!isNative && settings.notifEnabled) {
         const ahead = msUntil - settings.notifMinutes * 60 * 1000;
         if (ahead > 0) {
           azanTimers.current.push(
@@ -140,9 +177,15 @@ export default function App() {
   }
 
   async function requestNotifPermission() {
-    if (!('Notification' in window)) return;
-    const perm = await Notification.requestPermission();
-    if (perm === 'granted') updateSetting('notifEnabled', true);
+    if (isNative) {
+      const status = await LocalNotifications.requestPermissions();
+      if (status.display === 'granted') updateSetting('notifEnabled', true);
+      return;
+    }
+    if ('Notification' in window) {
+      const perm = await Notification.requestPermission();
+      if (perm === 'granted') updateSetting('notifEnabled', true);
+    }
   }
 
   function updateSetting(key, val) {
@@ -155,20 +198,24 @@ export default function App() {
     setError(null);
     try {
       let result;
+      let resolvedParams;
       if (params.type === 'city') {
         result = await fetchByCity(params.city, params.country, method);
+        resolvedParams = { ...params, label: searchLabel(params) };
       } else {
         result = await fetchByCoords(params.lat, params.lng, method);
         setUserCoords({ lat: params.lat, lng: params.lng });
+        resolvedParams = { ...params, label: await nativeLocationLabel(params) };
       }
       setData(result);
-      setLastSearch(params);
-      localStorage.setItem('lastSearch', JSON.stringify(params));
-      localStorage.setItem('lastData', JSON.stringify({ result, ts: Date.now() }));
+      setLastSearch(resolvedParams);
+      localStorage.setItem('lastSearch', JSON.stringify(resolvedParams));
+      localStorage.setItem('lastData', JSON.stringify({ result, params: resolvedParams, ts: Date.now() }));
     } catch (e) {
       const cached = loadStorage('lastData', null);
       if (cached?.result) {
         setData(cached.result);
+        if (cached.params) setLastSearch(cached.params);
         setError(`Offline — showing cached times from ${new Date(cached.ts).toLocaleString()}`);
       } else {
         setError(e.message);
@@ -177,6 +224,40 @@ export default function App() {
       setLoading(false);
     }
   }, [method]);
+
+  async function scheduleNativeNotifications(timings, minutes) {
+    if (!isNative) return;
+
+    const pending = await LocalNotifications.getPending();
+    const scheduledPrayerNotifications = pending.notifications
+      .filter(n => n.id >= NOTIFICATION_ID_BASE && n.id < NOTIFICATION_ID_BASE + 100)
+      .map(n => ({ id: n.id }));
+    if (scheduledPrayerNotifications.length) {
+      await LocalNotifications.cancel({ notifications: scheduledPrayerNotifications });
+    }
+
+    const now = new Date();
+    const notifications = PRAYERS
+      .filter(prayer => prayer.obligatory && timings[prayer.key])
+      .map((prayer, index) => {
+        const prayerTime = parseTime(timings[prayer.key]);
+        const notifyAt = new Date(prayerTime.getTime() - minutes * 60 * 1000);
+        if (notifyAt <= now) return null;
+
+        return {
+          id: NOTIFICATION_ID_BASE + index,
+          title: 'Azan Times',
+          body: `${prayer.name} prayer starts in ${minutes} minute${minutes !== 1 ? 's' : ''}.`,
+          schedule: { at: notifyAt },
+          sound: 'default',
+        };
+      })
+      .filter(Boolean);
+
+    if (notifications.length) {
+      await LocalNotifications.schedule({ notifications });
+    }
+  }
 
   async function loadWeekly(params) {
     setWL(true);
@@ -196,18 +277,21 @@ export default function App() {
 
   function handleSearch() {
     const input = cityInput.trim();
-    if (!input) return;
+    if (!input) { setShowSearch(true); return; }
     const parts = input.split(',').map(s => s.trim());
     performSearch({ type: 'city', city: parts[0], country: parts[1] || '' });
+    setShowSearch(false);
   }
 
   function handleLocate() {
     if (!navigator.geolocation) { setError('Geolocation not supported.'); return; }
     setLoading(true);
+    setError(null);
+    setShowSearch(false);
     navigator.geolocation.getCurrentPosition(
       pos => performSearch({ type: 'coords', lat: pos.coords.latitude, lng: pos.coords.longitude }),
       () => { setLoading(false); setError('Location access denied. Search for a city instead.'); },
-      { timeout: 10000 }
+      { enableHighAccuracy: true, maximumAge: 5 * 60 * 1000, timeout: 10000 }
     );
   }
 
@@ -225,9 +309,11 @@ export default function App() {
   const activePrayer   = data ? getActivePrayer(data.timings) : null;
   const progress       = data ? getPrayerProgress(data.timings) : null;
   const nextPrayerData = nextPrayer ? PRAYERS.find(p => p.key === nextPrayer) : null;
-  const cityName       = data
-    ? (data.meta?.timezone?.split('/').pop().replace(/_/g, ' ') ?? 'Your Location')
-    : '';
+  const cityName       = data && lastSearch
+    ? searchLabel(lastSearch)
+    : data
+      ? 'Current Location'
+      : '';
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -341,12 +427,35 @@ export default function App() {
         <div className="header">
           <div className="header-top">
             <div className="icon">🕌</div>
-            <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-              </svg>
-            </button>
+            <div className="header-actions">
+              <button
+                className={`icon-action ${showSearch ? 'active' : ''}`}
+                onClick={() => setShowSearch(s => !s)}
+                title="Search city"
+                aria-label="Search city"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+              </button>
+              <button
+                className="icon-action"
+                onClick={handleLocate}
+                title="Use my location"
+                aria-label="Use my location"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z"/>
+                  <circle cx="12" cy="9" r="2.5"/>
+                </svg>
+              </button>
+              <button className="icon-action" onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </button>
+            </div>
           </div>
           <h1>Azan Times</h1>
           <p className="header-arabic">أوقات الصلاة</p>
@@ -355,6 +464,7 @@ export default function App() {
         </div>
 
         {/* ── Search ── */}
+        {showSearch && (
         <div className="search-section">
           <div className="search-row">
             <div className="search-input-wrap">
@@ -362,6 +472,7 @@ export default function App() {
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
               <input
+                ref={searchInputRef}
                 type="text"
                 className="search-input"
                 placeholder="Search city — e.g. Istanbul, Makkah, London…"
@@ -376,15 +487,9 @@ export default function App() {
               </svg>
               Search
             </button>
-            <button className="btn btn-locate" onClick={handleLocate}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z"/>
-                <circle cx="12" cy="9" r="2.5"/>
-              </svg>
-              My Location
-            </button>
           </div>
         </div>
+        )}
 
         {/* ── Content ── */}
         {loading && (

@@ -80,6 +80,23 @@ npm run build
 npm run preview
 ```
 
+### Build the iOS App
+
+This project uses Capacitor to package the Vite app as a native iOS app.
+
+```bash
+npm run ios:sync
+npm run ios:open
+```
+
+In Xcode, choose a simulator or connected iPhone, set your signing team, then run the `App` target.
+
+If the `ios/` folder is missing in a fresh clone, run:
+
+```bash
+npm run ios:add
+```
+
 ---
 
 ## 🗂️ Project Structure
