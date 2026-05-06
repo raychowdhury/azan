@@ -1,9 +1,25 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { PRAYERS, METHODS, pad, parseTime, formatTime, getNextPrayer, getActivePrayer, getPrayerProgress } from './utils/prayers';
+import { PRAYERS, pad, parseTime, formatTime, getNextPrayer, getActivePrayer, getPrayerProgress } from './utils/prayers';
 import { fetchByCity, fetchByCoords, fetchWeeklyByCity, fetchWeeklyByCoords } from './utils/api';
+import {
+  DEFAULT_PRAYER_SETTINGS,
+  METHOD_OPTIONS,
+  buildComputedDay,
+  computePrayerTimes,
+  methodToApiId,
+  normalizePrayerSettings,
+} from './features/prayer-times/calculation';
+import {
+  NOTIFICATION_SOUNDS,
+  defaultNotificationSettings,
+  normalizeNotificationSettings,
+  soundFileForNotification,
+} from './features/notifications/settings';
+import HijriCalendar from './components/HijriCalendar';
 import QiblaCompass from './components/QiblaCompass';
+import Tasbih from './components/Tasbih';
 import WeeklyView from './components/WeeklyView';
 
 const AZAN_CDN = 'https://cdn.islamic.network/prayer-times/audio/Mishary_Rashid_Alafasy/mp3/';
@@ -17,6 +33,10 @@ const defaultSettings = {
   azanEnabled: false,
   notifEnabled: false,
   notifMinutes: 10,
+  notifications: defaultNotificationSettings(10),
+  prayer: DEFAULT_PRAYER_SETTINGS,
+  hijriOffset: 0,
+  tasbihTarget: 33,
 };
 
 function loadStorage(key, fallback) {
@@ -29,6 +49,32 @@ function searchLabel(params) {
   if (params.label) return params.label;
   if (params.type === 'city') return [params.city, params.country].filter(Boolean).join(', ');
   return 'Current Location';
+}
+
+function extractCoords(result, fallback) {
+  const latitude = result?.meta?.latitude;
+  const longitude = result?.meta?.longitude;
+  const lat = Number(latitude ?? fallback?.lat);
+  const lng = Number(longitude ?? fallback?.lng);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+function mergeSettings(raw) {
+  const legacyMinutes = raw?.notifMinutes ?? defaultSettings.notifMinutes;
+  return {
+    ...defaultSettings,
+    ...raw,
+    prayer: normalizePrayerSettings(raw?.prayer),
+    notifications: normalizeNotificationSettings(raw?.notifications, legacyMinutes),
+  };
+}
+
+function timingDateFor(baseDate, timeStr) {
+  const clean = String(timeStr).replace(/\s*\(.*\)/, '');
+  const [hours, minutes] = clean.split(':').map(Number);
+  const date = new Date(baseDate);
+  date.setHours(hours, minutes, 0, 0);
+  return date;
 }
 
 async function nativeLocationLabel(params) {
@@ -52,7 +98,6 @@ export default function App() {
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState(null);
   const [cityInput, setCityInput]     = useState('');
-  const [method, setMethod]           = useState(() => loadStorage('method', '3'));
   const [lastSearch, setLastSearch]   = useState(() => loadStorage('lastSearch', null));
   const [activeTab, setActiveTab]     = useState('today');
   const [showSearch, setShowSearch]   = useState(false);
@@ -60,7 +105,7 @@ export default function App() {
   const [countdown, setCountdown]     = useState({ h: 0, m: 0, s: 0 });
   const [nextPrayer, setNextPrayer]   = useState(null);
   const [userCoords, setUserCoords]   = useState(null);
-  const [settings, setSettings]       = useState(() => loadStorage('settings', defaultSettings));
+  const [settings, setSettings]       = useState(() => mergeSettings(loadStorage('settings', defaultSettings)));
 
   const countdownRef   = useRef(null);
   const azanTimers     = useRef([]);
@@ -74,7 +119,6 @@ export default function App() {
 
   // ── Persist settings / method ────────────────────────────────────────────────
   useEffect(() => { localStorage.setItem('settings', JSON.stringify(settings)); }, [settings]);
-  useEffect(() => { localStorage.setItem('method', method); }, [method]);
 
   // ── Auto-load on mount ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -122,7 +166,7 @@ export default function App() {
 
     if (isNative) {
       if (settings.notifEnabled) {
-        scheduleNativeNotifications(data.timings, settings.notifMinutes).catch(() => {});
+        scheduleNativeNotifications(data.timings, settings.notifications, userCoords).catch(() => {});
       } else {
         LocalNotifications.getPending()
           .then(pending => pending.notifications
@@ -138,24 +182,25 @@ export default function App() {
     const now = new Date();
     PRAYERS.forEach(prayer => {
       if (!data.timings[prayer.key]) return;
+      const cfg = settings.notifications[prayer.key];
       const pTime = parseTime(data.timings[prayer.key]);
       const msUntil = pTime - now;
       if (msUntil <= 0 || msUntil > 24 * 3600 * 1000) return;
 
-      if (settings.azanEnabled && prayer.obligatory) {
+      if (settings.azanEnabled && prayer.obligatory && cfg?.enabled && cfg.sound !== 'silent') {
         azanTimers.current.push(setTimeout(() => playAzan(prayer.key), msUntil));
       }
-      if (!isNative && settings.notifEnabled) {
-        const ahead = msUntil - settings.notifMinutes * 60 * 1000;
+      if (!isNative && settings.notifEnabled && cfg?.enabled) {
+        const ahead = msUntil - cfg.preReminderMinutes * 60 * 1000;
         if (ahead > 0) {
           azanTimers.current.push(
-            setTimeout(() => fireNotification(prayer.name, settings.notifMinutes), ahead)
+            setTimeout(() => fireNotification(prayer.name, cfg.preReminderMinutes), ahead)
           );
         }
       }
     });
     return () => azanTimers.current.forEach(clearTimeout);
-  }, [data, settings.azanEnabled, settings.notifEnabled, settings.notifMinutes]);
+  }, [data, settings.azanEnabled, settings.notifEnabled, settings.notifications, userCoords]);
 
   function playAzan(prayerKey) {
     try {
@@ -192,6 +237,39 @@ export default function App() {
     setSettings(s => ({ ...s, [key]: val }));
   }
 
+  function updatePrayerSetting(key, val) {
+    setSettings(s => ({
+      ...s,
+      prayer: normalizePrayerSettings({ ...s.prayer, [key]: val }),
+    }));
+  }
+
+  function updateManualOffset(key, val) {
+    setSettings(s => ({
+      ...s,
+      prayer: normalizePrayerSettings({
+        ...s.prayer,
+        manualOffsets: {
+          ...s.prayer.manualOffsets,
+          [key]: Math.max(-30, Math.min(30, Number(val))),
+        },
+      }),
+    }));
+  }
+
+  function updatePrayerNotification(prayerKey, patch) {
+    setSettings(s => ({
+      ...s,
+      notifications: normalizeNotificationSettings({
+        ...s.notifications,
+        [prayerKey]: {
+          ...s.notifications[prayerKey],
+          ...patch,
+        },
+      }, s.notifMinutes),
+    }));
+  }
+
   // ── Core search ──────────────────────────────────────────────────────────────
   const performSearch = useCallback(async (params, showLoader = true) => {
     if (showLoader) setLoading(true);
@@ -200,10 +278,14 @@ export default function App() {
       let result;
       let resolvedParams;
       if (params.type === 'city') {
-        result = await fetchByCity(params.city, params.country, method);
+        result = await fetchByCity(params.city, params.country, methodToApiId(settings.prayer.methodId));
+        const coords = extractCoords(result, null);
+        result = buildComputedDay(result, coords, settings.prayer);
+        if (coords) setUserCoords(coords);
         resolvedParams = { ...params, label: searchLabel(params) };
       } else {
-        result = await fetchByCoords(params.lat, params.lng, method);
+        result = await fetchByCoords(params.lat, params.lng, methodToApiId(settings.prayer.methodId));
+        result = buildComputedDay(result, { lat: params.lat, lng: params.lng }, settings.prayer);
         setUserCoords({ lat: params.lat, lng: params.lng });
         resolvedParams = { ...params, label: await nativeLocationLabel(params) };
       }
@@ -223,9 +305,9 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [method]);
+  }, [settings.prayer]);
 
-  async function scheduleNativeNotifications(timings, minutes) {
+  async function scheduleNativeNotifications(timings, notificationSettings, coords) {
     if (!isNative) return;
 
     const pending = await LocalNotifications.getPending();
@@ -237,22 +319,51 @@ export default function App() {
     }
 
     const now = new Date();
-    const notifications = PRAYERS
-      .filter(prayer => prayer.obligatory && timings[prayer.key])
-      .map((prayer, index) => {
-        const prayerTime = parseTime(timings[prayer.key]);
-        const notifyAt = new Date(prayerTime.getTime() - minutes * 60 * 1000);
-        if (notifyAt <= now) return null;
+    const notifications = [];
+    const days = coords ? 3 : 1;
 
-        return {
-          id: NOTIFICATION_ID_BASE + index,
-          title: 'Azan Times',
-          body: `${prayer.name} prayer starts in ${minutes} minute${minutes !== 1 ? 's' : ''}.`,
-          schedule: { at: notifyAt },
-          sound: 'default',
-        };
-      })
-      .filter(Boolean);
+    for (let dayOffset = 0; dayOffset < days; dayOffset += 1) {
+      const baseDate = new Date();
+      baseDate.setDate(baseDate.getDate() + dayOffset);
+      baseDate.setHours(0, 0, 0, 0);
+
+      const dayTimes = coords
+        ? computePrayerTimes(baseDate, coords, settings.prayer)
+        : Object.fromEntries(
+          Object.entries(timings).map(([key, value]) => [key, timingDateFor(baseDate, value)]),
+        );
+
+      PRAYERS.forEach((prayer, index) => {
+        const cfg = notificationSettings[prayer.key];
+        const prayerTime = dayTimes[prayer.key];
+        if (!cfg?.enabled || !prayerTime) return;
+
+        const preMinutes = Number(cfg.preReminderMinutes);
+
+        if (preMinutes > 0) {
+          const notifyAt = new Date(prayerTime.getTime() - preMinutes * 60 * 1000);
+          if (notifyAt > now) {
+            notifications.push({
+              id: NOTIFICATION_ID_BASE + dayOffset * 100 + 50 + index,
+              title: 'Prayer reminder',
+              body: `${prayer.name} prayer starts in ${preMinutes} minute${preMinutes !== 1 ? 's' : ''}.`,
+              schedule: { at: notifyAt },
+              sound: cfg.vibrateOnly ? undefined : 'beep.wav',
+            });
+          }
+        }
+
+        if (prayerTime > now) {
+          notifications.push({
+            id: NOTIFICATION_ID_BASE + dayOffset * 100 + index,
+            title: prayer.name,
+            body: `It's time for ${prayer.name} prayer.`,
+            schedule: { at: prayerTime },
+            sound: soundFileForNotification(cfg.sound, cfg.vibrateOnly),
+          });
+        }
+      });
+    }
 
     if (notifications.length) {
       await LocalNotifications.schedule({ notifications });
@@ -265,9 +376,9 @@ export default function App() {
       let result;
       if (!params) throw new Error('No location');
       if (params.type === 'city') {
-        result = await fetchWeeklyByCity(params.city, params.country, method);
+        result = await fetchWeeklyByCity(params.city, params.country, methodToApiId(settings.prayer.methodId));
       } else {
-        result = await fetchWeeklyByCoords(params.lat, params.lng, method);
+        result = await fetchWeeklyByCoords(params.lat, params.lng, methodToApiId(settings.prayer.methodId));
       }
       setWeeklyData(result);
     } catch {} finally {
@@ -295,11 +406,6 @@ export default function App() {
     );
   }
 
-  function handleMethodChange(val) {
-    setMethod(val);
-    if (lastSearch) performSearch(lastSearch);
-  }
-
   function handleTabChange(tab) {
     setActiveTab(tab);
     if (tab === 'weekly' && !weeklyData && lastSearch) loadWeekly(lastSearch);
@@ -314,6 +420,23 @@ export default function App() {
     : data
       ? 'Current Location'
       : '';
+
+  useEffect(() => {
+    if (lastSearch) performSearch(lastSearch, false);
+  }, [
+    settings.prayer.methodId,
+    settings.prayer.madhab,
+    settings.prayer.highLatitudeRule,
+    settings.prayer.fajrAngle,
+    settings.prayer.ishaAngle,
+    settings.prayer.ishaInterval,
+    settings.prayer.manualOffsets.Fajr,
+    settings.prayer.manualOffsets.Sunrise,
+    settings.prayer.manualOffsets.Dhuhr,
+    settings.prayer.manualOffsets.Asr,
+    settings.prayer.manualOffsets.Maghrib,
+    settings.prayer.manualOffsets.Isha,
+  ]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -392,13 +515,28 @@ export default function App() {
               </div>
               {settings.notifEnabled && (
                 <div className="notif-minutes">
-                  <span className="setting-hint">Alert</span>
+                  <span className="setting-hint">Default reminder</span>
                   <select
                     className="method-select small"
                     value={settings.notifMinutes}
-                    onChange={e => updateSetting('notifMinutes', Number(e.target.value))}
+                    onChange={e => {
+                      const minutes = Number(e.target.value);
+                      setSettings(s => ({
+                        ...s,
+                        notifMinutes: minutes,
+                        notifications: normalizeNotificationSettings(
+                          Object.fromEntries(
+                            Object.entries(s.notifications).map(([key, cfg]) => [
+                              key,
+                              { ...cfg, preReminderMinutes: minutes },
+                            ]),
+                          ),
+                          minutes,
+                        ),
+                      }));
+                    }}
                   >
-                    {[5, 10, 15, 20, 30].map(n => (
+                    {[0, 5, 10, 15, 30].map(n => (
                       <option key={n} value={n}>{n} min before</option>
                     ))}
                   </select>
@@ -406,17 +544,169 @@ export default function App() {
               )}
             </div>
 
+            {settings.notifEnabled && (
+              <div className="setting-group">
+                <label className="setting-label">Per-Prayer Notifications</label>
+                <div className="notif-prayer-list">
+                  {PRAYERS.map(prayer => {
+                    const cfg = settings.notifications[prayer.key];
+                    return (
+                      <div key={prayer.key} className="notif-prayer-card">
+                        <div className="notif-prayer-top">
+                          <div>
+                            <div className="notif-prayer-name">{prayer.name}</div>
+                            <div className="setting-hint">{prayer.arabic}</div>
+                          </div>
+                          <label className="switch">
+                            <input
+                              type="checkbox"
+                              checked={cfg.enabled}
+                              onChange={e => updatePrayerNotification(prayer.key, { enabled: e.target.checked })}
+                            />
+                            <span className="slider" />
+                          </label>
+                        </div>
+
+                        {cfg.enabled && (
+                          <div className="notif-prayer-controls">
+                            <label>
+                              <span>Sound</span>
+                              <select
+                                className="method-select small"
+                                value={cfg.sound}
+                                onChange={e => updatePrayerNotification(prayer.key, { sound: e.target.value })}
+                              >
+                                {NOTIFICATION_SOUNDS.map(sound => (
+                                  <option key={sound.id} value={sound.id}>{sound.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              <span>Reminder</span>
+                              <select
+                                className="method-select small"
+                                value={cfg.preReminderMinutes}
+                                onChange={e => updatePrayerNotification(prayer.key, { preReminderMinutes: Number(e.target.value) })}
+                              >
+                                {[0, 5, 10, 15, 30].map(n => (
+                                  <option key={n} value={n}>{n === 0 ? 'Off' : `${n} min`}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="vibrate-check">
+                              <input
+                                type="checkbox"
+                                checked={cfg.vibrateOnly}
+                                onChange={e => updatePrayerNotification(prayer.key, { vibrateOnly: e.target.checked })}
+                              />
+                              <span>Vibrate only</span>
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="setting-hint">iOS notification sounds use bundled files under 30 seconds. Full Adhan still plays only after the app opens.</p>
+              </div>
+            )}
+
             <div className="setting-group">
               <label className="setting-label">Calculation Method</label>
               <select
                 className="method-select"
-                value={method}
-                onChange={e => handleMethodChange(e.target.value)}
+                value={settings.prayer.methodId}
+                onChange={e => updatePrayerSetting('methodId', e.target.value)}
               >
-                {METHODS.map(m => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
+                {METHOD_OPTIONS.map(m => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
               </select>
+              <p className="setting-hint">
+                {METHOD_OPTIONS.find(m => m.id === settings.prayer.methodId)?.description}
+              </p>
+            </div>
+
+            <div className="setting-group">
+              <label className="setting-label">Madhab</label>
+              <div className="toggle-row">
+                <button
+                  className={`theme-btn ${settings.prayer.madhab === 'shafi' ? 'active' : ''}`}
+                  onClick={() => updatePrayerSetting('madhab', 'shafi')}
+                >Shafi / Maliki / Hanbali</button>
+                <button
+                  className={`theme-btn ${settings.prayer.madhab === 'hanafi' ? 'active' : ''}`}
+                  onClick={() => updatePrayerSetting('madhab', 'hanafi')}
+                >Hanafi</button>
+              </div>
+              <p className="setting-hint">Hanafi calculates Asr later in the afternoon.</p>
+            </div>
+
+            {Math.abs(userCoords?.lat ?? 0) > 48 && (
+              <div className="setting-group">
+                <label className="setting-label">High Latitude Rule</label>
+                <select
+                  className="method-select"
+                  value={settings.prayer.highLatitudeRule}
+                  onChange={e => updatePrayerSetting('highLatitudeRule', e.target.value)}
+                >
+                  <option value="">Method default</option>
+                  <option value="MiddleOfTheNight">Middle of the night</option>
+                  <option value="SeventhOfTheNight">Seventh of the night</option>
+                  <option value="TwilightAngle">Twilight angle</option>
+                </select>
+              </div>
+            )}
+
+            {settings.prayer.methodId === 'Other' && (
+              <div className="setting-group">
+                <label className="setting-label">Custom Angles</label>
+                <div className="number-grid">
+                  <label>
+                    <span>Fajr angle</span>
+                    <input
+                      type="number"
+                      min="10"
+                      max="25"
+                      value={settings.prayer.fajrAngle}
+                      onChange={e => updatePrayerSetting('fajrAngle', e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>Isha angle</span>
+                    <input
+                      type="number"
+                      min="10"
+                      max="25"
+                      value={settings.prayer.ishaAngle}
+                      onChange={e => updatePrayerSetting('ishaAngle', e.target.value)}
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
+
+            <div className="setting-group">
+              <label className="setting-label">Manual Offsets</label>
+              <p className="setting-hint">Fine tune each prayer from -30 to +30 minutes.</p>
+              <div className="offset-list">
+                {PRAYERS.map(prayer => (
+                  <div key={prayer.key} className="offset-row">
+                    <span>{prayer.name}</span>
+                    <div className="stepper">
+                      <button onClick={() => updateManualOffset(prayer.key, settings.prayer.manualOffsets[prayer.key] - 1)}>−</button>
+                      <input
+                        type="number"
+                        min="-30"
+                        max="30"
+                        value={settings.prayer.manualOffsets[prayer.key]}
+                        onChange={e => updateManualOffset(prayer.key, e.target.value)}
+                      />
+                      <button onClick={() => updateManualOffset(prayer.key, settings.prayer.manualOffsets[prayer.key] + 1)}>+</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -555,13 +845,21 @@ export default function App() {
 
             {/* Tabs */}
             <div className="tabs">
-              {['today', 'weekly', 'qibla'].map(tab => (
+              {['today', 'weekly', 'qibla', 'hijri', 'tasbih'].map(tab => (
                 <button
                   key={tab}
                   className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
                   onClick={() => handleTabChange(tab)}
                 >
-                  {tab === 'today' ? '🕐 Today' : tab === 'weekly' ? '📅 Weekly' : '🧭 Qibla'}
+                  {tab === 'today'
+                    ? '🕐 Today'
+                    : tab === 'weekly'
+                      ? '📅 Weekly'
+                      : tab === 'qibla'
+                        ? '🧭 Qibla'
+                        : tab === 'hijri'
+                          ? '☾ Hijri'
+                          : '◉ Tasbih'}
                 </button>
               ))}
             </div>
@@ -683,6 +981,22 @@ export default function App() {
             {/* Qibla tab */}
             {activeTab === 'qibla' && (
               <QiblaCompass userCoords={userCoords} onLocate={handleLocate} />
+            )}
+
+            {/* Hijri tab */}
+            {activeTab === 'hijri' && (
+              <HijriCalendar
+                offsetDays={settings.hijriOffset}
+                onOffsetChange={value => updateSetting('hijriOffset', value)}
+              />
+            )}
+
+            {/* Tasbih tab */}
+            {activeTab === 'tasbih' && (
+              <Tasbih
+                target={settings.tasbihTarget}
+                onTargetChange={value => updateSetting('tasbihTarget', value)}
+              />
             )}
           </>
         )}
