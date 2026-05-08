@@ -17,12 +17,17 @@ import {
   normalizeNotificationSettings,
   soundFileForNotification,
 } from './features/notifications/settings';
+import {
+  ADHAN_SOURCES,
+  DEFAULT_ADHAN_SOURCE,
+  adhanUrlFor,
+  getAdhanSource,
+} from './features/audio/sources';
 import HijriCalendar from './components/HijriCalendar';
 import QiblaCompass from './components/QiblaCompass';
 import Tasbih from './components/Tasbih';
 import WeeklyView from './components/WeeklyView';
-
-const AZAN_CDN = 'https://cdn.islamic.network/prayer-times/audio/Mishary_Rashid_Alafasy/mp3/';
+import { useT } from './i18n';
 const isNative = Capacitor.isNativePlatform();
 const ReverseGeocoder = registerPlugin('ReverseGeocoder');
 const NOTIFICATION_ID_BASE = 4200;
@@ -32,6 +37,7 @@ const defaultSettings = {
   use24h: false,
   theme: 'dark',
   azanEnabled: false,
+  azanSource: DEFAULT_ADHAN_SOURCE,
   notifEnabled: false,
   notifMinutes: 10,
   notifications: defaultNotificationSettings(10),
@@ -98,6 +104,7 @@ async function nativeLocationLabel(params) {
 }
 
 export default function App() {
+  const { t, lang, setLang, languages } = useT();
   const [data, setData]               = useState(null);
   const [weeklyData, setWeeklyData]   = useState(null);
   const [weeklyLoading, setWL]        = useState(false);
@@ -208,14 +215,68 @@ export default function App() {
     return () => azanTimers.current.forEach(clearTimeout);
   }, [data, settings.azanEnabled, settings.notifEnabled, settings.notifications, userCoords]);
 
-  function playAzan(prayerKey) {
+  function stopAudio() {
+    if (audioRef.current) {
+      try { audioRef.current.pause(); } catch {}
+      audioRef.current = null;
+    }
+  }
+
+  function playAzanUrl(url) {
+    if (!url) return;
     try {
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-      const audio = new Audio(`${AZAN_CDN}${prayerKey}.mp3`);
+      stopAudio();
+      const audio = new Audio(url);
       audio.volume = 1;
       audio.play().catch(() => {});
       audioRef.current = audio;
     } catch {}
+  }
+
+  function playAzan(prayerKey) {
+    const source = getAdhanSource(settings.azanSource);
+    if (source.builtin === 'silent') return;
+    if (source.builtin === 'beep') {
+      playAzanUrl('/beep.wav');
+      return;
+    }
+    playAzanUrl(adhanUrlFor(settings.azanSource, prayerKey));
+  }
+
+  function previewAzan() {
+    const source = getAdhanSource(settings.azanSource);
+    if (source.builtin === 'silent') return;
+    if (source.builtin === 'beep') { playAzanUrl('/beep.wav'); return; }
+    playAzanUrl(adhanUrlFor(settings.azanSource, 'Fajr'));
+  }
+
+  async function fireTestNotification() {
+    if (isNative) {
+      try {
+        const status = await LocalNotifications.checkPermissions();
+        if (status.display !== 'granted') {
+          const req = await LocalNotifications.requestPermissions();
+          if (req.display !== 'granted') return;
+        }
+        await LocalNotifications.schedule({
+          notifications: [{
+            id: NOTIFICATION_ID_BASE + NOTIFICATION_ID_SPAN - 1,
+            title: 'Azan Times — test',
+            body: 'Notifications are working. ✅',
+            schedule: { at: new Date(Date.now() + 1500) },
+          }],
+        });
+      } catch {}
+      return;
+    }
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'granted') {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') return;
+    }
+    new Notification('🕌 Azan Times — test', {
+      body: 'Notifications are working. ✅',
+    });
   }
 
   function fireNotification(prayerName, minutes) {
@@ -452,43 +513,56 @@ export default function App() {
         <div className="settings-overlay" onClick={() => setShowSettings(false)}>
           <div className="settings-panel" onClick={e => e.stopPropagation()}>
             <div className="settings-header">
-              <h3>Settings</h3>
+              <h3>{t('settings.title')}</h3>
               <button className="settings-close" onClick={() => setShowSettings(false)}>✕</button>
             </div>
 
             <div className="setting-group">
-              <label className="setting-label">Theme</label>
+              <label className="setting-label">{t('settings.language')}</label>
+              <select
+                className="method-select"
+                value={lang}
+                onChange={e => setLang(e.target.value)}
+              >
+                {languages.map(l => (
+                  <option key={l.id} value={l.id}>{l.nativeLabel}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="setting-group">
+              <label className="setting-label">{t('settings.theme')}</label>
               <div className="toggle-row">
                 <button
                   className={`theme-btn ${settings.theme === 'dark' ? 'active' : ''}`}
                   onClick={() => updateSetting('theme', 'dark')}
-                >🌙 Dark</button>
+                >{t('settings.theme.dark')}</button>
                 <button
                   className={`theme-btn ${settings.theme === 'light' ? 'active' : ''}`}
                   onClick={() => updateSetting('theme', 'light')}
-                >☀️ Light</button>
+                >{t('settings.theme.light')}</button>
               </div>
             </div>
 
             <div className="setting-group">
-              <label className="setting-label">Time Format</label>
+              <label className="setting-label">{t('settings.timeFormat')}</label>
               <div className="toggle-row">
                 <button
                   className={`theme-btn ${!settings.use24h ? 'active' : ''}`}
                   onClick={() => updateSetting('use24h', false)}
-                >12-hour</button>
+                >{t('settings.timeFormat.12')}</button>
                 <button
                   className={`theme-btn ${settings.use24h ? 'active' : ''}`}
                   onClick={() => updateSetting('use24h', true)}
-                >24-hour</button>
+                >{t('settings.timeFormat.24')}</button>
               </div>
             </div>
 
             <div className="setting-group">
               <div className="setting-row">
                 <div>
-                  <label className="setting-label">Azan Audio</label>
-                  <p className="setting-hint">Play azan when prayer time arrives</p>
+                  <label className="setting-label">{t('settings.azanAudio')}</label>
+                  <p className="setting-hint">{t('settings.azanAudio.hint')}</p>
                 </div>
                 <label className="switch">
                   <input
@@ -499,13 +573,45 @@ export default function App() {
                   <span className="slider" />
                 </label>
               </div>
+              {settings.azanEnabled && (
+                <div className="adhan-source-row">
+                  <label className="adhan-source-label">
+                    <span>{t('settings.reciter')}</span>
+                    <select
+                      className="method-select"
+                      value={settings.azanSource}
+                      onChange={e => { stopAudio(); updateSetting('azanSource', e.target.value); }}
+                    >
+                      {ADHAN_SOURCES.map(source => (
+                        <option key={source.id} value={source.id}>
+                          {source.label}{source.unverified ? ' (preview)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="adhan-source-actions">
+                    <button type="button" className="btn-secondary" onClick={previewAzan}>
+                      {t('settings.preview')}
+                    </button>
+                    <button type="button" className="btn-secondary" onClick={stopAudio}>
+                      {t('settings.stop')}
+                    </button>
+                  </div>
+                  <p className="setting-hint">
+                    {getAdhanSource(settings.azanSource).description}
+                    {getAdhanSource(settings.azanSource).unverified
+                      ? ' Source URL needs verification before release.'
+                      : ''}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="setting-group">
               <div className="setting-row">
                 <div>
-                  <label className="setting-label">Prayer Notifications</label>
-                  <p className="setting-hint">Browser alert before prayer time</p>
+                  <label className="setting-label">{t('settings.notifications')}</label>
+                  <p className="setting-hint">{t('settings.notifications.hint')}</p>
                 </div>
                 <label className="switch">
                   <input
@@ -521,7 +627,7 @@ export default function App() {
               </div>
               {settings.notifEnabled && (
                 <div className="notif-minutes">
-                  <span className="setting-hint">Default reminder</span>
+                  <span className="setting-hint">{t('settings.notifications.defaultReminder')}</span>
                   <select
                     className="method-select small"
                     value={settings.notifMinutes}
@@ -548,11 +654,16 @@ export default function App() {
                   </select>
                 </div>
               )}
+              {settings.notifEnabled && (
+                <button type="button" className="btn-secondary notif-test" onClick={fireTestNotification}>
+                  {t('settings.notifications.test')}
+                </button>
+              )}
             </div>
 
             {settings.notifEnabled && (
               <div className="setting-group">
-                <label className="setting-label">Per-Prayer Notifications</label>
+                <label className="setting-label">{t('settings.perPrayer')}</label>
                 <div className="notif-prayer-list">
                   {PRAYERS.map(prayer => {
                     const cfg = settings.notifications[prayer.key];
@@ -618,7 +729,7 @@ export default function App() {
             )}
 
             <div className="setting-group">
-              <label className="setting-label">Calculation Method</label>
+              <label className="setting-label">{t('settings.calculationMethod')}</label>
               <select
                 className="method-select"
                 value={settings.prayer.methodId}
@@ -634,18 +745,18 @@ export default function App() {
             </div>
 
             <div className="setting-group">
-              <label className="setting-label">Madhab</label>
+              <label className="setting-label">{t('settings.madhab')}</label>
               <div className="toggle-row">
                 <button
                   className={`theme-btn ${settings.prayer.madhab === 'shafi' ? 'active' : ''}`}
                   onClick={() => updatePrayerSetting('madhab', 'shafi')}
-                >Shafi / Maliki / Hanbali</button>
+                >{t('settings.madhab.shafi')}</button>
                 <button
                   className={`theme-btn ${settings.prayer.madhab === 'hanafi' ? 'active' : ''}`}
                   onClick={() => updatePrayerSetting('madhab', 'hanafi')}
-                >Hanafi</button>
+                >{t('settings.madhab.hanafi')}</button>
               </div>
-              <p className="setting-hint">Hanafi calculates Asr later in the afternoon.</p>
+              <p className="setting-hint">{t('settings.madhab.hint')}</p>
             </div>
 
             {Math.abs(userCoords?.lat ?? 0) > 48 && (
@@ -693,8 +804,8 @@ export default function App() {
             )}
 
             <div className="setting-group">
-              <label className="setting-label">Manual Offsets</label>
-              <p className="setting-hint">Fine tune each prayer from -30 to +30 minutes.</p>
+              <label className="setting-label">{t('settings.manualOffsets')}</label>
+              <p className="setting-hint">{t('settings.manualOffsets.hint')}</p>
               <div className="offset-list">
                 {PRAYERS.map(prayer => (
                   <div key={prayer.key} className="offset-row">
@@ -753,9 +864,9 @@ export default function App() {
               </button>
             </div>
           </div>
-          <h1>Azan Times</h1>
-          <p className="header-arabic">أوقات الصلاة</p>
-          <p className="header-sub">Accurate prayer schedules for any city worldwide</p>
+          <h1>{t('app.title')}</h1>
+          {lang !== 'ar' && <p className="header-arabic">أوقات الصلاة</p>}
+          <p className="header-sub">{t('app.subtitle')}</p>
           <div className="header-ornament">──◈──</div>
         </div>
 
@@ -771,7 +882,7 @@ export default function App() {
                 ref={searchInputRef}
                 type="text"
                 className="search-input"
-                placeholder="Search city — e.g. Istanbul, Makkah, London…"
+                placeholder={t('search.placeholder')}
                 value={cityInput}
                 onChange={e => setCityInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSearch()}
@@ -781,7 +892,7 @@ export default function App() {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
-              Search
+              {t('search.button')}
             </button>
           </div>
         </div>
@@ -807,8 +918,8 @@ export default function App() {
           <div className="welcome-state">
             <div className="welcome-mosque">🕌</div>
             <p className="welcome-bismillah">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</p>
-            <h2 className="welcome-title">Prayer Times</h2>
-            <p className="welcome-text">Search for any city or tap <strong>My Location</strong> to view today's prayer schedule</p>
+            <h2 className="welcome-title">{t('welcome.title')}</h2>
+            <p className="welcome-text">{t('welcome.text')}</p>
             <div className="welcome-divider">── ✦ ──</div>
           </div>
         )}
@@ -836,14 +947,14 @@ export default function App() {
               <div className="sun-item rise">
                 <div className="sun-icon">🌅</div>
                 <div className="sun-detail">
-                  <div className="sun-label">Sunrise</div>
+                  <div className="sun-label">{t('sun.sunrise')}</div>
                   <div className="sun-time">{formatTime(data.timings.Sunrise, settings.use24h)}</div>
                 </div>
               </div>
               <div className="sun-item set">
                 <div className="sun-icon">🌇</div>
                 <div className="sun-detail">
-                  <div className="sun-label">Sunset</div>
+                  <div className="sun-label">{t('sun.sunset')}</div>
                   <div className="sun-time">{formatTime(data.timings.Sunset, settings.use24h)}</div>
                 </div>
               </div>
@@ -857,15 +968,7 @@ export default function App() {
                   className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
                   onClick={() => handleTabChange(tab)}
                 >
-                  {tab === 'today'
-                    ? '🕐 Today'
-                    : tab === 'weekly'
-                      ? '📅 Weekly'
-                      : tab === 'qibla'
-                        ? '🧭 Qibla'
-                        : tab === 'hijri'
-                          ? '☾ Hijri'
-                          : '◉ Tasbih'}
+                  {t(`tab.${tab}`)}
                 </button>
               ))}
             </div>
@@ -888,26 +991,26 @@ export default function App() {
                       <span className="countdown-name-ar">{nextPrayerData.arabic}</span>
                       <span className="countdown-name-en">{nextPrayerData.name}</span>
                     </div>
-                    <div className="countdown-hero-label">Time Remaining</div>
+                    <div className="countdown-hero-label">{t('countdown.timeRemaining')}</div>
                     <div className="countdown-digits">
                       <div className="digit-block">
                         <span className="digit-num">{pad(countdown.h)}</span>
-                        <span className="digit-label">HRS</span>
+                        <span className="digit-label">{t('countdown.hours')}</span>
                       </div>
                       <span className="digit-sep">:</span>
                       <div className="digit-block">
                         <span className="digit-num">{pad(countdown.m)}</span>
-                        <span className="digit-label">MIN</span>
+                        <span className="digit-label">{t('countdown.minutes')}</span>
                       </div>
                       <span className="digit-sep">:</span>
                       <div className="digit-block">
                         <span className="digit-num">{pad(countdown.s)}</span>
-                        <span className="digit-label">SEC</span>
+                        <span className="digit-label">{t('countdown.seconds')}</span>
                       </div>
                     </div>
                     {/* Prayer time */}
                     <div className="countdown-prayer-time">
-                      ◈ Begins at {formatTime(data.timings[nextPrayerData.key], settings.use24h)}
+                      ◈ {t('countdown.beginsAt')} {formatTime(data.timings[nextPrayerData.key], settings.use24h)}
                     </div>
                     {/* Progress inside hero */}
                     {progress && (
@@ -947,8 +1050,8 @@ export default function App() {
                           <div>
                             <div className="prayer-name">
                               {p.name}
-                              {isNext && <span className="next-badge">Next</span>}
-                              {isActive && !isNext && <span className="active-badge">Current</span>}
+                              {isNext && <span className="next-badge">{t('label.next')}</span>}
+                              {isActive && !isNext && <span className="active-badge">{t('label.current')}</span>}
                             </div>
                             <div className="prayer-arabic">{p.arabic}</div>
                           </div>
@@ -965,11 +1068,11 @@ export default function App() {
                 <div className="azan-status">
                   <span className={`azan-dot ${settings.azanEnabled ? 'on' : 'off'}`} />
                   <span>
-                    Azan audio {settings.azanEnabled ? 'enabled' : 'disabled'}
-                    {settings.notifEnabled ? ` · Notifications ${settings.notifMinutes}min before` : ''}
+                    {settings.azanEnabled ? t('azan.statusOn') : t('azan.statusOff')}
+                    {settings.notifEnabled ? ' ' + t('azan.notifSuffix', { minutes: settings.notifMinutes }) : ''}
                   </span>
                   <button className="azan-settings-link" onClick={() => setShowSettings(true)}>
-                    Configure →
+                    {t('azan.configure')}
                   </button>
                 </div>
               </>
@@ -1008,8 +1111,8 @@ export default function App() {
         )}
 
         <div className="footer">
-          Powered by <a href="https://aladhan.com/prayer-times-api" target="_blank" rel="noreferrer">Aladhan API</a> ·
-          Audio by <a href="https://islamic.network" target="_blank" rel="noreferrer">Islamic Network</a>
+          {t('footer.poweredBy')} <a href="https://aladhan.com/prayer-times-api" target="_blank" rel="noreferrer">Aladhan API</a> ·
+          {' '}{t('footer.audioBy')} <a href="https://islamic.network" target="_blank" rel="noreferrer">Islamic Network</a>
         </div>
       </div>
     </div>

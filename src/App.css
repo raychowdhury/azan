@@ -1797,3 +1797,58 @@ input:checked + .slider::before { transform: translateX(20px); background: #fff;
   .compass-container  { width: 220px; height: 220px; }
   .compass-tick       { transform-origin: 50% 110px; }
 }
+
+/* ── v1.1.0 additions ──────────────────────────────────────────────────────── */
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: var(--text, #fff);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.btn-secondary:hover { background: rgba(255,255,255,0.08); }
+.btn-secondary:active { transform: scale(0.97); }
+
+.adhan-source-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.adhan-source-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+.adhan-source-actions { display: flex; gap: 8px; }
+
+.notif-test { margin-top: 10px; align-self: flex-start; }
+
+.dhikr-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+.dhikr-select-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  flex: 1;
+  min-width: 180px;
+}
+.dhikr-arabic {
+  font-size: 1.4rem;
+  font-family: 'Amiri', 'Scheherazade', serif;
+  direction: rtl;
+}
+
