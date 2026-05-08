@@ -15,9 +15,9 @@ Location access is used only for app functionality. We do not sell, rent, or sha
 Azan Times may access third-party services to provide app features, including:
 
 - Aladhan API for prayer times and Islamic calendar data
-- Islamic Network CDN for Azan audio
+- A third-party Adhan audio CDN, currently islamcan.com, for optional Adhan audio playback
 
-These services may process basic technical request information such as IP address, device/browser information, or network metadata according to their own privacy practices.
+These services may process basic technical request information such as IP address, device/browser information, or network metadata according to their own privacy practices. Azan Times does not create accounts, does not show ads, does not include analytics SDKs, and does not track users across services.
 
 ## Notifications
 

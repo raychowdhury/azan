@@ -5,69 +5,66 @@
 // and must be present in the iOS app bundle. The sources below are full
 // Adhan audio that only play while the app is open.
 //
-// URL VERIFICATION HISTORY (v1.1.0):
-//   The original v1.0 path
-//     https://cdn.islamic.network/prayer-times/audio/Mishary_Rashid_Alafasy/...
-//   returns HTTP 403 (bucket access denied). islamic.network only serves
-//   Quran audio publicly (cdn.islamic.network/quran/audio/...), not Adhan.
-//   v1.1.0 falls back to islamcan.com which returns 200 / audio/mpeg for
-//   azan1.mp3 ... azan9.mp3. URLs are reachable but the *voice mapping*
-//   (which file is Mishary vs Makkah vs Madinah, etc.) is not authoritative.
+// URL VERIFICATION HISTORY:
+//   v1.0 used cdn.islamic.network/prayer-times/audio/... which returns
+//   HTTP 403 (bucket access denied — that path does not exist on
+//   islamic.network's public CDN). v1.1.0 falls back to islamcan.com which
+//   returns 200 / audio/mpeg for azan1.mp3 ... azan9.mp3.
 //
-// LICENSING NOTE: Verify licensing/attribution for each track before
-// shipping a marketing claim of a specific reciter. Until verified, leave
-// `unverified: true` so the UI shows "(preview)" and the privacy/marketing
-// copy avoids naming the reciter.
+// LABELING:
+//   Specific reciter or location names (Mishary, Makkah, Madinah, etc.)
+//   are NOT used because the voice mapping for each azan{N}.mp3 file is
+//   not authoritative. Until each track is verified, options are exposed
+//   as generic "Adhan 1 ... Adhan 5" with `unverified: true`.
 //
-// LOCAL FALLBACKS: `Beep` plays public/beep.wav (also bundled in iOS as a
-// notification sound). `Silent` performs no playback.
+// LOCAL FALLBACKS:
+//   Beep   — plays public/beep.wav (also bundled in iOS as a notification
+//            sound). Default first-run option.
+//   Silent — performs no playback at all. Never fetches network audio.
 
 const ISLAMCAN = 'https://www.islamcan.com/audio/adhan';
 
-// All reciter-named tracks reuse the same online catalog until each voice
-// is verified and remapped. Keep the function form so we can swap to a
-// per-prayer template later (as v1.0 attempted) without changing callers.
 function islamcanTrack(filename) {
   return () => `${ISLAMCAN}/${filename}`;
 }
 
 export const ADHAN_SOURCES = [
   {
-    id: 'mishary',
-    label: 'Mishary Al-Afasy',
-    description: 'Default Adhan recording.',
+    id: 'adhan1',
+    label: 'Adhan 1',
+    description: 'Streaming Adhan recording.',
     urlFor: islamcanTrack('azan1.mp3'),
     attribution: 'islamcan.com',
-    unverified: true, // verify voice mapping + licensing before release
+    unverified: true,
   },
   {
-    id: 'makkah',
-    label: 'Makkah',
-    description: 'Adhan from Masjid al-Haram (placeholder track).',
+    id: 'adhan2',
+    label: 'Adhan 2',
+    description: 'Streaming Adhan recording.',
     urlFor: islamcanTrack('azan2.mp3'),
     attribution: 'islamcan.com',
     unverified: true,
   },
   {
-    id: 'madinah',
-    label: 'Madinah',
-    description: 'Adhan from Masjid an-Nabawi (placeholder track).',
+    id: 'adhan3',
+    label: 'Adhan 3',
+    description: 'Streaming Adhan recording.',
     urlFor: islamcanTrack('azan3.mp3'),
     attribution: 'islamcan.com',
     unverified: true,
   },
   {
-    id: 'egyptian',
-    label: 'Egyptian',
-    description: 'Classical Egyptian-style Adhan (placeholder track).',
+    id: 'adhan4',
+    label: 'Adhan 4',
+    description: 'Streaming Adhan recording.',
     urlFor: islamcanTrack('azan4.mp3'),
     attribution: 'islamcan.com',
     unverified: true,
   },
   {
-    id: 'turkish',
-    label: 'Turkish',
-    description: 'Turkish-style Adhan (placeholder track).',
+    id: 'adhan5',
+    label: 'Adhan 5',
+    description: 'Streaming Adhan recording.',
     urlFor: islamcanTrack('azan5.mp3'),
     attribution: 'islamcan.com',
     unverified: true,
@@ -90,9 +87,23 @@ export const ADHAN_SOURCES = [
   },
 ];
 
-// Default to the bundled Beep so first-run plays a verified, offline sound.
-// Users can switch to a named (unverified) reciter from settings.
+// Default to the bundled Beep — verified, offline, and labeled honestly.
 export const DEFAULT_ADHAN_SOURCE = 'beep';
+
+// Map legacy ids saved by previous v1.1.0 builds onto the new generic ids.
+const LEGACY_ID_MAP = {
+  mishary:  'adhan1',
+  makkah:   'adhan2',
+  madinah:  'adhan3',
+  egyptian: 'adhan4',
+  turkish:  'adhan5',
+};
+
+export function normalizeAdhanSourceId(id) {
+  if (!id) return DEFAULT_ADHAN_SOURCE;
+  if (LEGACY_ID_MAP[id]) return LEGACY_ID_MAP[id];
+  return ADHAN_SOURCES.some(s => s.id === id) ? id : DEFAULT_ADHAN_SOURCE;
+}
 
 export function getAdhanSource(id) {
   return ADHAN_SOURCES.find(source => source.id === id) ?? ADHAN_SOURCES[0];

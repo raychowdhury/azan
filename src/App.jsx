@@ -22,6 +22,7 @@ import {
   DEFAULT_ADHAN_SOURCE,
   adhanUrlFor,
   getAdhanSource,
+  normalizeAdhanSourceId,
 } from './features/audio/sources';
 import HijriCalendar from './components/HijriCalendar';
 import QiblaCompass from './components/QiblaCompass';
@@ -71,6 +72,7 @@ function mergeSettings(raw) {
   return {
     ...defaultSettings,
     ...raw,
+    azanSource: normalizeAdhanSourceId(raw?.azanSource),
     prayer: normalizePrayerSettings(raw?.prayer),
     notifications: normalizeNotificationSettings(raw?.notifications, legacyMinutes),
   };
