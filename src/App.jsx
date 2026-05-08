@@ -26,6 +26,7 @@ const AZAN_CDN = 'https://cdn.islamic.network/prayer-times/audio/Mishary_Rashid_
 const isNative = Capacitor.isNativePlatform();
 const ReverseGeocoder = registerPlugin('ReverseGeocoder');
 const NOTIFICATION_ID_BASE = 4200;
+const NOTIFICATION_ID_SPAN = 300;
 
 const defaultSettings = {
   use24h: false,
@@ -75,6 +76,11 @@ function timingDateFor(baseDate, timeStr) {
   const date = new Date(baseDate);
   date.setHours(hours, minutes, 0, 0);
   return date;
+}
+
+function isScheduledPrayerNotification(notification) {
+  return notification.id >= NOTIFICATION_ID_BASE
+    && notification.id < NOTIFICATION_ID_BASE + NOTIFICATION_ID_SPAN;
 }
 
 async function nativeLocationLabel(params) {
@@ -170,7 +176,7 @@ export default function App() {
       } else {
         LocalNotifications.getPending()
           .then(pending => pending.notifications
-            .filter(n => n.id >= NOTIFICATION_ID_BASE && n.id < NOTIFICATION_ID_BASE + 100)
+            .filter(isScheduledPrayerNotification)
             .map(n => ({ id: n.id })))
           .then(notifications => {
             if (notifications.length) return LocalNotifications.cancel({ notifications });
@@ -312,7 +318,7 @@ export default function App() {
 
     const pending = await LocalNotifications.getPending();
     const scheduledPrayerNotifications = pending.notifications
-      .filter(n => n.id >= NOTIFICATION_ID_BASE && n.id < NOTIFICATION_ID_BASE + 100)
+      .filter(isScheduledPrayerNotification)
       .map(n => ({ id: n.id }));
     if (scheduledPrayerNotifications.length) {
       await LocalNotifications.cancel({ notifications: scheduledPrayerNotifications });
