@@ -32,7 +32,9 @@ import HijriCalendar from './components/HijriCalendar';
 import QiblaCompass from './components/QiblaCompass';
 import Tasbih from './components/Tasbih';
 import WeeklyView from './components/WeeklyView';
+import PrayerIcon from './components/PrayerIcon';
 import { toHijri } from './features/hijri/converter';
+import { getActiveSky } from './utils/sky';
 import { useT } from './i18n';
 const isNative = Capacitor.isNativePlatform();
 const ReverseGeocoder = registerPlugin('ReverseGeocoder');
@@ -172,6 +174,13 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', settings.theme);
   }, [settings.theme]);
+
+  // ── Apply sky-of-day (drives background + hero gradient) ────────────────────
+  const skyKey = data?.timings ? getActiveSky(data.timings, now) : 'dhuhr';
+  useEffect(() => {
+    document.documentElement.setAttribute('data-sky', skyKey);
+    document.body.setAttribute('data-sky', skyKey);
+  }, [skyKey]);
 
   // ── Persist settings / method ────────────────────────────────────────────────
   useEffect(() => { localStorage.setItem('settings', JSON.stringify(settings)); }, [settings]);
@@ -566,8 +575,28 @@ export default function App() {
   ]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
+  const isNightSky = skyKey === 'isha' || skyKey === 'fajr';
   return (
     <div className="app">
+      {/* Sky-of-day full-bleed gradient layer */}
+      <div className="sky-layer" aria-hidden="true" />
+      <div className="sky-veil" aria-hidden="true" />
+      <div className="sky-orb" aria-hidden="true" />
+      {isNightSky && Array.from({ length: 18 }).map((_, i) => (
+        <div
+          key={i}
+          className="sky-star"
+          aria-hidden="true"
+          style={{
+            top: `${4 + ((i * 37) % 60)}%`,
+            left: `${4 + ((i * 71) % 92)}%`,
+            width: i % 4 === 0 ? 3 : 2,
+            height: i % 4 === 0 ? 3 : 2,
+            opacity: 0.3 + ((i * 53) % 50) / 100,
+          }}
+        />
+      ))}
+
       {/* ── Settings Panel ── */}
       {showSettings && (
         <div className="settings-overlay" onClick={() => setShowSettings(false)}>
@@ -973,14 +1002,14 @@ export default function App() {
             {/* Sun strip */}
             <div className="sun-strip">
               <div className="sun-item rise">
-                <div className="sun-icon">🌅</div>
+                <div className="sun-icon"><PrayerIcon name="sunrise" size={18} /></div>
                 <div className="sun-detail">
                   <div className="sun-label">{t('sun.sunrise')}</div>
                   <div className="sun-time">{formatTime(data.timings.Sunrise, settings.use24h)}</div>
                 </div>
               </div>
               <div className="sun-item set">
-                <div className="sun-icon">🌇</div>
+                <div className="sun-icon"><PrayerIcon name="maghrib" size={18} /></div>
                 <div className="sun-detail">
                   <div className="sun-label">{t('sun.sunset')}</div>
                   <div className="sun-time">{formatTime(data.timings.Sunset, settings.use24h)}</div>
@@ -1008,11 +1037,12 @@ export default function App() {
                 {nextPrayerData && (
                   <div className="countdown-hero">
                     <div className="countdown-hero-top-bar" />
+                    <div className="hero-sun" aria-hidden="true" />
 
                     {/* Large glowing prayer icon */}
                     <div className="hero-icon-wrap">
                       <div className="hero-icon-ring" />
-                      <div className="hero-icon">{nextPrayerData.icon}</div>
+                      <div className="hero-icon"><PrayerIcon name={nextPrayerData.key} size={48} stroke={1.4} /></div>
                     </div>
 
                     <div className="countdown-hero-names">
@@ -1074,7 +1104,7 @@ export default function App() {
                         className={`prayer-card ${isNext ? 'next' : ''} ${isActive ? 'active' : ''}`}
                       >
                         <div className="prayer-left">
-                          <div className="prayer-icon">{p.icon}</div>
+                          <div className="prayer-icon"><PrayerIcon name={p.key} size={22} /></div>
                           <div>
                             <div className="prayer-name">
                               {p.name}
