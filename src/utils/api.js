@@ -53,3 +53,49 @@ export async function fetchWeeklyByCoords(lat, lng, method, school = '0') {
   });
   return request(`${BASE}/calendar?${params}`, 'Could not fetch weekly prayer times.');
 }
+
+// Nominatim (OpenStreetMap) city autocomplete. Free, no API key.
+// Rate-limited to ~1 req/sec — caller should debounce.
+const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
+
+export async function searchCities(query, signal) {
+  const q = String(query || '').trim();
+  if (q.length < 2) return [];
+  const params = new URLSearchParams({
+    q,
+    format: 'json',
+    addressdetails: '1',
+    'accept-language': 'en',
+    limit: '6',
+    featuretype: 'city',
+  });
+  try {
+    const res = await fetch(`${NOMINATIM}?${params}`, {
+      signal,
+      headers: { 'Accept': 'application/json' },
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json
+      .map((row) => {
+        const a = row.address || {};
+        const city = a.city || a.town || a.village || a.municipality || a.hamlet || row.name;
+        const region = a.state || a.region || a.county;
+        const country = a.country;
+        if (!city || !country) return null;
+        return {
+          city,
+          region,
+          country,
+          countryCode: a.country_code ? String(a.country_code).toUpperCase() : '',
+          lat: Number(row.lat),
+          lng: Number(row.lon),
+          displayName: row.display_name,
+        };
+      })
+      .filter(Boolean);
+  } catch (e) {
+    if (e.name === 'AbortError') return [];
+    return [];
+  }
+}

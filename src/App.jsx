@@ -34,6 +34,8 @@ import Tasbih from './components/Tasbih';
 import WeeklyView from './components/WeeklyView';
 import PrayerIcon from './components/PrayerIcon';
 import Onboarding from './components/Onboarding';
+import LaunchScreen from './components/LaunchScreen';
+import CitySearchInput from './components/CitySearchInput';
 import { toHijri } from './features/hijri/converter';
 import { getActiveSky } from './utils/sky';
 import { useT } from './i18n';
@@ -219,6 +221,7 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState(() => {
     try { return localStorage.getItem(ONBOARDING_KEY) !== '1'; } catch { return false; }
   });
+  const [showLaunch, setShowLaunch] = useState(true);
 
   const countdownRef   = useRef(null);
   const azanTimers     = useRef([]);
@@ -240,11 +243,11 @@ export default function App() {
   // ── Persist settings / method ────────────────────────────────────────────────
   useEffect(() => { localStorage.setItem('settings', JSON.stringify(settings)); }, [settings]);
 
-  // ── Auto-load on mount ───────────────────────────────────────────────────────
+  // ── Auto-load on mount (deferred so it doesn't block first paint) ──────────
   useEffect(() => {
-    if (lastSearch) {
-      performSearch(lastSearch, false);
-    }
+    if (!lastSearch) return;
+    const id = setTimeout(() => performSearch(lastSearch, false), 50);
+    return () => clearTimeout(id);
   }, []);
 
   useEffect(() => {
@@ -297,21 +300,30 @@ export default function App() {
     azanTimers.current = [];
     if (!data) return;
 
-    if (isNative) {
-      if (settings.notifEnabled) {
-        const notificationCoords = lastSearch?.type === 'coords' ? userCoords : null;
-        scheduleNativeNotifications(data.timings, settings.notifications, notificationCoords).catch(() => {});
-      } else {
-        LocalNotifications.getPending()
-          .then(pending => pending.notifications
-            .filter(isScheduledPrayerNotification)
-            .map(n => ({ id: n.id })))
-          .then(notifications => {
-            if (notifications.length) return LocalNotifications.cancel({ notifications });
-          })
-          .catch(() => {});
+    // Defer native bridge calls + timer scheduling so they don't block
+    // first paint. setTimeout 0 yields to render; idle callback even better.
+    const idle = (cb) => (window.requestIdleCallback
+      ? window.requestIdleCallback(cb, { timeout: 1500 })
+      : setTimeout(cb, 0));
+    const cancelIdle = (id) => (window.cancelIdleCallback ? window.cancelIdleCallback(id) : clearTimeout(id));
+
+    const idleId = idle(() => {
+      if (isNative) {
+        if (settings.notifEnabled) {
+          const notificationCoords = lastSearch?.type === 'coords' ? userCoords : null;
+          scheduleNativeNotifications(data.timings, settings.notifications, notificationCoords).catch(() => {});
+        } else {
+          LocalNotifications.getPending()
+            .then(pending => pending.notifications
+              .filter(isScheduledPrayerNotification)
+              .map(n => ({ id: n.id })))
+            .then(notifications => {
+              if (notifications.length) return LocalNotifications.cancel({ notifications });
+            })
+            .catch(() => {});
+        }
       }
-    }
+    });
 
     const now = new Date();
     PRAYERS.forEach(prayer => {
@@ -333,7 +345,10 @@ export default function App() {
         }
       }
     });
-    return () => azanTimers.current.forEach(clearTimeout);
+    return () => {
+      cancelIdle(idleId);
+      azanTimers.current.forEach(clearTimeout);
+    };
   }, [data, settings.azanEnabled, settings.notifEnabled, settings.notifications, userCoords, lastSearch]);
 
   function stopAudio() {
@@ -668,7 +683,17 @@ export default function App() {
     setShowOnboarding(false);
   };
   return (
-    <div className="app">
+    <div className={`app ${showSearch ? 'app--searching' : ''}`}>
+      {/* In-app launch overlay (matches design) */}
+      {showLaunch && (
+        <LaunchScreen
+          skyKey={skyKey}
+          dark={settings.theme !== 'light'}
+          holdMs={600}
+          onDone={() => setShowLaunch(false)}
+        />
+      )}
+
       {/* Sky-of-day full-bleed gradient layer */}
       <div className="sky-layer" aria-hidden="true" />
       <div className="sky-veil" aria-hidden="true" />
@@ -1038,20 +1063,23 @@ export default function App() {
         {showSearch && (
         <div className="search-section">
           <div className="search-row">
-            <div className="search-input-wrap">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <input
-                ref={searchInputRef}
-                type="text"
-                className="search-input"
-                placeholder={t('search.placeholder')}
-                value={cityInput}
-                onChange={e => setCityInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              />
-            </div>
+            <CitySearchInput
+              value={cityInput}
+              onChange={setCityInput}
+              onSubmit={handleSearch}
+              onPickSuggestion={(s) => {
+                setCityInput(`${s.city}, ${s.country}`);
+                setShowSearch(false);
+                performSearch({
+                  type: 'coords',
+                  lat: s.lat,
+                  lng: s.lng,
+                  label: `${s.city}${s.region ? ', ' + s.region : ''}, ${s.country}`,
+                });
+              }}
+              placeholder={t('search.placeholder')}
+              inputRef={searchInputRef}
+            />
             <button className="btn btn-search" onClick={handleSearch}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -1199,9 +1227,9 @@ export default function App() {
                     )}
                     {progress && (
                       <div className="countdown-progress-labels">
-                        <span>{progress.prevKey}</span>
+                        <span>{progress.prevKey.toUpperCase()} · {formatTime(data.timings[progress.prevKey], settings.use24h).replace(/\s?(AM|PM)/, '')}</span>
                         <span>{Math.round(progress.progress)}%</span>
-                        <span>{progress.nextKey}</span>
+                        <span>{progress.nextKey.toUpperCase()} · {formatTime(data.timings[progress.nextKey], settings.use24h).replace(/\s?(AM|PM)/, '')}</span>
                       </div>
                     )}
                   </div>

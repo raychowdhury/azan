@@ -239,10 +239,9 @@ html[data-sky="isha"]    { --sky-grad: linear-gradient(160deg, #1a2244 0%, #2a34
   width: 38px;
   height: 38px;
   border-radius: 11px !important;
-  background: var(--bg-card) !important;
+  background: var(--bg-card-hover) !important;
   border: 1px solid var(--border) !important;
   color: var(--text-primary) !important;
-  backdrop-filter: blur(20px);
 }
 .icon-action svg { width: 16px; height: 16px; }
 
@@ -343,6 +342,8 @@ html[data-sky="isha"]    { --sky-grad: linear-gradient(160deg, #1a2244 0%, #2a34
 
 /* ─── Search ─────────────────────────────────────────────────────────────── */
 .search-section {
+  position: relative;
+  z-index: 400;
   margin-bottom: 26px;
   animation: fadeUp 0.8s ease-out 0.1s both;
 }
@@ -514,28 +515,31 @@ html[data-sky="isha"]    { --sky-grad: linear-gradient(160deg, #1a2244 0%, #2a34
 /* ─── Sun Strip ──────────────────────────────────────────────────────────── */
 .sun-strip {
   display: flex;
-  justify-content: center;
-  gap: 14px;
-  margin-bottom: 22px;
+  justify-content: stretch;
+  align-items: center;
+  gap: 0;
+  margin: 4px 0 22px;
+  padding: 6px 0;
+  border-top: 0.5px solid var(--border);
+  border-bottom: 0.5px solid var(--border);
   animation: fadeUp 0.6s ease-out 0.08s both;
 }
 
 .sun-item {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 20px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  backdrop-filter: blur(12px);
-  transition: border-color 0.25s, transform 0.25s;
+  padding: 6px 14px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  backdrop-filter: none;
+  transition: none;
 }
+.sun-item + .sun-item { border-left: 0.5px solid var(--border); }
 
-.sun-item:hover {
-  border-color: rgba(201,151,58,0.26);
-  transform: translateY(-1px);
-}
+.sun-item:hover { background: transparent; transform: none; border-color: var(--border); }
 
 .sun-icon {
   width: 30px; height: 30px;
@@ -574,12 +578,10 @@ html[data-sky="isha"]    { --sky-grad: linear-gradient(160deg, #1a2244 0%, #2a34
   z-index: 50;
   display: flex;
   gap: 2px;
-  background: var(--bg-card);
+  background: var(--bg-card-hover);
   border: 1px solid var(--border);
   border-radius: 22px;
   padding: 6px;
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
   box-shadow: 0 8px 28px rgba(28,25,22,0.18);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -622,40 +624,37 @@ html[data-sky="isha"]    { --sky-grad: linear-gradient(160deg, #1a2244 0%, #2a34
   box-shadow: none;
 }
 
-/* ─── Countdown Hero ─────────────────────────────────────────────────────── */
+/* ─── Countdown Hero — flat, no card ─────────────────────────────────────── */
 .countdown-hero {
   position: relative;
-  background: var(--sky-grad, var(--hero-bg));
-  border: 1px solid var(--border);
-  border-radius: 24px;
-  padding: 28px 24px 22px;
-  margin-bottom: 16px;
-  text-align: center;
-  overflow: hidden;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 4px 0 8px;
+  margin-bottom: 18px;
+  text-align: left;
+  overflow: visible;
   animation: fadeUp 0.7s ease-out;
-  backdrop-filter: blur(16px);
-  color: #fff;
-  transition: background 0.6s ease;
+  backdrop-filter: none;
+  color: var(--text-primary);
+  transition: color 0.6s ease;
 }
-[data-theme="light"] .countdown-hero { color: #1c1916; }
-[data-theme="light"][data-sky="dhuhr"] .countdown-hero,
-[data-theme="light"][data-sky="sunrise"] .countdown-hero,
-[data-theme="light"][data-sky="asr"] .countdown-hero { color: #1c1916; }
-[data-theme="light"][data-sky="fajr"] .countdown-hero,
-[data-theme="light"][data-sky="maghrib"] .countdown-hero,
-[data-theme="light"][data-sky="isha"] .countdown-hero { color: #fff; }
 
-/* Sun/moon orb tucked behind the hero */
+/* Sun/moon orb tucked behind the hero (top-right of section) */
 .countdown-hero .hero-sun {
   position: absolute;
-  right: -30px; top: -30px;
-  width: 140px; height: 140px;
+  right: -40px; top: -10px;
+  width: 160px; height: 160px;
   border-radius: 50%;
   background: var(--sky-sun, #ffd84a);
   opacity: 0.85;
-  box-shadow: 0 0 60px 12px var(--sky-glow, rgba(255,216,74,0.45));
+  box-shadow: 0 0 80px 18px var(--sky-glow, rgba(255,216,74,0.45));
   pointer-events: none;
+  z-index: 0;
 }
+.countdown-hero > *:not(.hero-sun) { position: relative; z-index: 1; }
+.countdown-hero-top-bar { display: none; }
+.countdown-hero::before, .countdown-hero::after { display: none; }
 
 /* Gold top accent bar */
 .countdown-hero-top-bar {
@@ -742,86 +741,86 @@ html[data-sky="isha"]    { --sky-grad: linear-gradient(160deg, #1a2244 0%, #2a34
   display: flex !important;
   flex-direction: row !important;
   align-items: baseline !important;
-  gap: 10px !important;
+  gap: 12px !important;
   margin-bottom: 4px !important;
+  justify-content: flex-start !important;
 }
 
 .countdown-name-en {
   font-family: inherit;
-  font-size: 2.1rem;
-  font-weight: 700;
-  letter-spacing: -0.5px;
-  color: inherit;
+  font-size: 3rem;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: var(--text-primary);
   text-transform: none;
+  line-height: 1;
 }
 
 .countdown-name-ar {
   font-family: 'SF Arabic', 'Amiri', serif;
-  font-size: 1.2rem;
-  color: inherit;
-  opacity: 0.7;
+  font-size: 1.4rem;
+  color: var(--gold);
+  opacity: 0.8;
   line-height: 1;
   direction: rtl;
   filter: none;
 }
 
 .countdown-hero-label {
-  font-size: 0.66rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  color: inherit;
-  opacity: 0.65;
+  color: var(--text-secondary);
   font-weight: 700;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 /* Digit blocks */
 .countdown-digits {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  margin-bottom: 14px;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 28px;
+  margin: 12px 0 18px;
 }
 
 .digit-block {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  background: rgba(255,255,255,0.14);
+  align-items: flex-start;
+  background: transparent;
   border: 0;
-  border-radius: 12px;
-  padding: 10px 14px 8px;
-  min-width: 64px;
-  backdrop-filter: blur(8px);
+  border-radius: 0;
+  padding: 4px 0;
+  min-width: 0;
+  backdrop-filter: none;
 }
-[data-theme="light"] .digit-block { background: rgba(28,25,22,0.06); }
 
 .digit-num {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 2.5rem;
-  font-weight: 700;
+  font-family: inherit;
+  font-size: 3.4rem;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
   line-height: 1;
-  letter-spacing: -0.02em;
+  letter-spacing: -2px;
 }
 
 .digit-label {
-  font-size: 0.56rem;
+  font-size: 0.66rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.18em;
   color: var(--text-muted);
-  margin-top: 5px;
+  margin-top: 6px;
 }
 
 .digit-sep {
-  font-size: 2rem;
-  font-weight: 300;
-  color: var(--gold);
-  opacity: 0.45;
-  margin-bottom: 16px;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  opacity: 0.4;
+  margin-top: 18px;
   line-height: 1;
 }
 
@@ -836,43 +835,43 @@ html[data-sky="isha"]    { --sky-grad: linear-gradient(160deg, #1a2244 0%, #2a34
 .countdown-progress {
   height: 3px;
   background: var(--prog-bg);
-  border-radius: 3px;
+  border-radius: 99px;
   overflow: hidden;
-  margin-bottom: 6px;
+  margin: 8px 0 6px;
 }
 
 .countdown-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--teal) 0%, var(--gold) 100%);
-  border-radius: 3px;
+  background: var(--gold);
+  border-radius: 99px;
   transition: width 1s linear;
 }
 
 .countdown-progress-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 0.65rem;
+  font-size: 0.66rem;
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
 }
+.countdown-progress-labels span:nth-child(2) { color: var(--gold); }
 
 /* ─── Section Divider ────────────────────────────────────────────────────── */
 .section-divider { display: none; }
 .div-line, .div-icon { display: none; }
 
-/* ─── Prayer Cards ───────────────────────────────────────────────────────── */
-/* iOS-style grouped prayer list — single container, internal dividers */
+/* ─── Prayer list — flat rows, no card, left accent bar on current/next ── */
 .prayers-grid {
   display: flex;
   flex-direction: column;
   margin-bottom: 18px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  overflow: hidden;
-  backdrop-filter: blur(12px);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  backdrop-filter: none;
   animation: fadeUp 0.6s ease-out 0.1s both;
 }
 
@@ -880,24 +879,40 @@ html[data-sky="isha"]    { --sky-grad: linear-gradient(160deg, #1a2244 0%, #2a34
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 13px 16px;
+  padding: 14px 4px 14px 14px;
   background: transparent;
   border: 0;
   border-top: 0.5px solid var(--border);
   border-radius: 0;
-  transition: background 0.2s;
+  transition: opacity 0.2s;
   position: relative;
   cursor: default;
 }
 .prayer-card:first-child { border-top: 0; }
 
-.prayer-card::before { content: none; }
+/* Left vertical accent bar — replaces the previous fill */
+.prayer-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 12px; bottom: 12px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: transparent;
+  transition: background 0.2s;
+}
 
-.prayer-card:hover { background: rgba(28,25,22,0.03); }
-[data-theme="dark"] .prayer-card:hover { background: rgba(255,255,255,0.03); }
+.prayer-card:hover { background: transparent; }
 
-.prayer-card.active { background: var(--active-bg); }
-.prayer-card.next   { background: var(--next-bg); }
+.prayer-card.active { background: transparent; }
+.prayer-card.active::before { background: var(--teal); }
+
+.prayer-card.next   { background: transparent; }
+.prayer-card.next::before { background: var(--gold); }
+
+/* Past prayers dim slightly */
+.prayer-card:not(.active):not(.next):not(:has(~ .prayer-card.active)):not(:has(~ .prayer-card.next)) {
+  opacity: 0.55;
+}
 
 .prayer-left {
   display: flex;
@@ -906,30 +921,21 @@ html[data-sky="isha"]    { --sky-grad: linear-gradient(160deg, #1a2244 0%, #2a34
 }
 
 .prayer-icon {
-  width: 42px; height: 42px;
+  width: 28px; height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg-card);
-  color: var(--text-secondary);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
   flex-shrink: 0;
-  transition: border-color 0.25s, background 0.25s, color 0.25s;
+  transition: color 0.25s;
 }
 .prayer-icon svg { width: 22px; height: 22px; }
 
-.prayer-card.active .prayer-icon {
-  border-color: var(--border-teal);
-  background: var(--teal-dim);
-  color: var(--teal-light);
-}
-
-.prayer-card.next .prayer-icon {
-  border-color: rgba(212,168,87,0.22);
-  background: var(--gold-dim);
-  color: var(--gold);
-}
+.prayer-card.active .prayer-icon { color: var(--teal); }
+.prayer-card.next   .prayer-icon { color: var(--gold); }
 
 .prayer-name {
   font-size: 0.97rem;
@@ -966,23 +972,17 @@ html[data-sky="isha"]    { --sky-grad: linear-gradient(160deg, #1a2244 0%, #2a34
 .next-badge, .active-badge {
   font-size: 0.58rem;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   padding: 2px 8px;
-  border-radius: 20px;
+  border-radius: 6px;
   font-weight: 700;
   flex-shrink: 0;
+  background: transparent;
+  border: 1px solid currentColor;
 }
 
-.next-badge {
-  background: var(--gold);
-  color: #170d00;
-}
-
-.active-badge {
-  background: var(--teal-dim);
-  color: var(--teal-light);
-  border: 1px solid var(--border-teal);
-}
+.next-badge   { color: var(--gold); }
+.active-badge { color: var(--teal); }
 
 /* ─── Azan Status Bar ────────────────────────────────────────────────────── */
 .azan-status {
@@ -1378,12 +1378,13 @@ input:checked + .slider::before { transform: translateX(20px); background: #fff;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
-  padding: 14px;
+  padding: 8px 0 0;
   margin-top: 12px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  backdrop-filter: blur(12px);
+  background: transparent;
+  border: 0;
+  border-top: 0.5px solid var(--border);
+  border-radius: 0;
+  backdrop-filter: none;
 }
 
 .calendar-weekday {
@@ -1466,10 +1467,11 @@ input:checked + .slider::before { transform: translateX(20px); background: #fff;
   display: flex;
   gap: 12px;
   margin-top: 16px;
-  padding: 15px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-card);
+  padding: 14px 0;
+  border: 0;
+  border-top: 0.5px solid var(--border);
+  border-radius: 0;
+  background: transparent;
 }
 
 .event-detail-card h3,
@@ -1727,13 +1729,15 @@ input:checked + .slider::before { transform: translateX(20px); background: #fff;
 .day-btn:hover:not(.selected) { background: var(--gold-dim); }
 
 .day-detail-card {
-  background: var(--bg-card);
-  border: 1px solid rgba(201,151,58,0.18);
-  border-radius: 18px;
-  padding: 16px 20px;
+  background: transparent;
+  border: 0;
+  border-top: 0.5px solid var(--border);
+  border-bottom: 0.5px solid var(--border);
+  border-radius: 0;
+  padding: 14px 0;
   margin-bottom: 16px;
   animation: fadeUp 0.3s ease-out;
-  backdrop-filter: blur(10px);
+  backdrop-filter: none;
 }
 
 .day-detail-header {
@@ -1900,11 +1904,13 @@ input:checked + .slider::before { transform: translateX(20px); background: #fff;
 }
 
 .qibla-angle {
-  margin: 0 18px 12px;
-  padding: 16px;
-  border-radius: 18px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  margin: 0 0 12px;
+  padding: 14px 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  border-top: 0.5px solid var(--border);
+  border-bottom: 0.5px solid var(--border);
   font-size: 1.6rem;
   font-weight: 700;
   letter-spacing: -1px;
@@ -2294,3 +2300,232 @@ input:checked + .slider::before { transform: translateX(20px); background: #fff;
 .onb-status-hint { color: var(--text-secondary); font-size: 12px; margin-top: 4px; line-height: 1.4; }
 
 .onb-cta:disabled, .onb-sub:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ─── Launch overlay (in-app splash, shown ~1.5s after WebView mounts) ──── */
+.launch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: calc(80px + env(safe-area-inset-top, 0px)) 28px calc(60px + env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+  transition: opacity 0.4s ease;
+}
+.launch-overlay.leaving { opacity: 0; pointer-events: none; }
+
+.launch-star {
+  position: absolute;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 4px rgba(255,255,255,0.6);
+  pointer-events: none;
+}
+
+.launch-orb {
+  position: absolute;
+  top: 140px;
+  right: -40px;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.launch-arch {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+.launch-stack {
+  position: relative;
+  z-index: 1;
+  display: contents;
+}
+
+.launch-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.launch-logo {
+  width: 96px;
+  height: 96px;
+  border-radius: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+}
+
+.launch-wordmark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.launch-name {
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: -1.2px;
+  line-height: 1;
+}
+
+.launch-name-ar {
+  font-family: 'SF Arabic', 'Geeza Pro', 'Amiri', serif;
+  font-size: 22px;
+  letter-spacing: 0.5px;
+  color: #d4a857;
+}
+
+.launch-tagline {
+  font-size: 14px;
+  letter-spacing: 0.2px;
+  margin-top: 4px;
+  max-width: 260px;
+  line-height: 1.45;
+}
+
+.launch-chip {
+  margin-top: 18px;
+  padding: 8px 14px;
+  border-radius: 99px;
+  backdrop-filter: blur(10px);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.launch-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.launch-bottom {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+}
+
+.launch-verse {
+  font-family: 'SF Arabic', 'Geeza Pro', 'Amiri', serif;
+  font-size: 17px;
+  line-height: 1.6;
+  max-width: 300px;
+  opacity: 0.85;
+}
+
+.launch-verse-en {
+  font-size: 11px;
+  font-style: italic;
+  max-width: 280px;
+}
+
+.launch-loader {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.launch-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: launchPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes launchPulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+/* ─── City search autocomplete ──────────────────────────────────────────── */
+.city-search-wrap { position: relative; flex: 1; min-width: 0; }
+
+.city-search-spinner {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border: 2px solid var(--border);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  pointer-events: none;
+}
+
+.city-search-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 500;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(28,25,22,0.18);
+  backdrop-filter: blur(20px);
+  max-height: 320px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.city-search-item {
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.city-search-item:hover,
+.city-search-item.active {
+  background: var(--gold-dim);
+}
+
+.city-search-primary {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.city-search-region {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.city-search-secondary {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* When search is open, hide the inline action buttons so dropdown can breathe */
+.app--searching .header-inline-actions { display: none; }
