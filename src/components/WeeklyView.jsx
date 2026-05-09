@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import { formatTime, PRAYERS } from '../utils/prayers';
+import { useT } from '../i18n';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const OBLIGATORY = PRAYERS.filter(p => p.obligatory);
 
-export default function WeeklyView({ weeklyData, loading, use24h }) {
+export default function WeeklyView({ weeklyData, loading, use24h, onReload }) {
+  const { t } = useT();
   const [selectedDay, setSelectedDay] = useState(null);
 
   if (loading) {
     return (
       <div className="status-msg">
         <div className="spinner" />
-        <p>Loading weekly schedule…</p>
+        <p>{t('status.loading')}</p>
       </div>
     );
   }
@@ -19,7 +21,12 @@ export default function WeeklyView({ weeklyData, loading, use24h }) {
   if (!weeklyData) {
     return (
       <div className="status-msg">
-        <p>No weekly data available.</p>
+        <p>{t('weekly.empty')}</p>
+        {onReload && (
+          <button type="button" className="btn btn-search" onClick={onReload} style={{ marginTop: 12 }}>
+            {t('weekly.retry')}
+          </button>
+        )}
       </div>
     );
   }

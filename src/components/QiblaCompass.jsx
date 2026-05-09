@@ -65,7 +65,12 @@ export default function QiblaCompass({ userCoords, onLocate }) {
   if (!userCoords) {
     return (
       <div className="qibla-empty">
-        <div className="qibla-empty-icon">🧭</div>
+        <div className="qibla-empty-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="m15 9-2 6-4 1 1-4Z"/>
+          </svg>
+        </div>
         <p className="qibla-empty-title">Location Required</p>
         <p className="qibla-empty-text">Qibla direction needs your coordinates.</p>
         <button className="btn btn-search" onClick={onLocate}>
@@ -126,7 +131,13 @@ export default function QiblaCompass({ userCoords, onLocate }) {
           style={{ transform: `rotate(${needleRotation}deg)` }}
         >
           <div className="compass-needle">
-            <div className="needle-kaaba">🕋</div>
+            <div className="needle-kaaba" aria-label="Kaaba">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="5" y="7" width="14" height="13" rx="0.5"/>
+                <path d="M5 11h14" strokeWidth="2.5"/>
+                <path d="M9 7V5h6v2"/>
+              </svg>
+            </div>
             <div className="needle-line" />
             <div className="needle-tail" />
           </div>

@@ -122,11 +122,14 @@ export default function Tasbih({ target, onTargetChange }) {
         {dhikr.arabic && <div className="dhikr-arabic">{dhikr.arabic}</div>}
       </div>
 
-      <button className="tasbih-button" onClick={increment}>
+      <button
+        className="tasbih-button"
+        onClick={increment}
+        style={{ '--tasbih-progress': progress }}
+      >
         <span className="tasbih-count">{count}</span>
-        {target > 0 && <span className="tasbih-target">/ {target}</span>}
-        <span className="tasbih-label">{dhikr.label}</span>
-        {target > 0 && <span className="tasbih-progress" style={{ width: `${progress}%` }} />}
+        {target > 0 && <span className="tasbih-target">{t('tasbih.of')} {target}</span>}
+        <span className="tasbih-label">{t('tasbih.tapToCount')}</span>
       </button>
 
       <button className="tasbih-reset" onClick={reset}>{t('tasbih.reset')}</button>

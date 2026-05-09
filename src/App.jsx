@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { PRAYERS, pad, parseTime, formatTime, getNextPrayer, getActivePrayer, getPrayerProgress } from './utils/prayers';
+import { PRAYERS, pad, parseTime, formatTime, getNextPrayer, getActivePrayer, getPrayerProgress, getNextPrayerDate } from './utils/prayers';
 import { fetchByCity, fetchByCoords, fetchWeeklyByCity, fetchWeeklyByCoords } from './utils/api';
 import {
   DEFAULT_PRAYER_SETTINGS,
@@ -33,9 +33,61 @@ import QiblaCompass from './components/QiblaCompass';
 import Tasbih from './components/Tasbih';
 import WeeklyView from './components/WeeklyView';
 import PrayerIcon from './components/PrayerIcon';
+import Onboarding from './components/Onboarding';
 import { toHijri } from './features/hijri/converter';
 import { getActiveSky } from './utils/sky';
 import { useT } from './i18n';
+
+const ONBOARDING_KEY = 'onboardingComplete';
+
+function TabIcon({ name }) {
+  const props = {
+    width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none',
+    stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round',
+    strokeLinejoin: 'round', style: { display: 'block' },
+  };
+  switch (name) {
+    case 'today':
+      return (
+        <svg {...props}>
+          <path d="M4 11 12 4l8 7" />
+          <path d="M6 10v9a1 1 0 0 0 1 1h3v-5h4v5h3a1 1 0 0 0 1-1v-9" />
+        </svg>
+      );
+    case 'weekly':
+      return (
+        <svg {...props}>
+          <rect x="3" y="5" width="18" height="16" rx="3" />
+          <path d="M3 10h18M8 3v4M16 3v4" />
+        </svg>
+      );
+    case 'qibla':
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="m15 9-2 6-4 1 1-4Z" />
+        </svg>
+      );
+    case 'hijri':
+      return (
+        <svg {...props}>
+          <path d="m12 3 2.5 5.5L20 9.5l-4 4 1 6L12 17l-5 2.5 1-6-4-4 5.5-1Z" />
+        </svg>
+      );
+    case 'tasbih':
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="5" r="2" />
+          <path d="M12 7c-3 1-6 3-6 7a6 6 0 0 0 12 0c0-4-3-6-6-7Z" />
+          <circle cx="9" cy="14" r="0.8" fill="currentColor" />
+          <circle cx="15" cy="14" r="0.8" fill="currentColor" />
+          <circle cx="12" cy="17" r="0.8" fill="currentColor" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
 const isNative = Capacitor.isNativePlatform();
 const ReverseGeocoder = registerPlugin('ReverseGeocoder');
 const NOTIFICATION_ID_BASE = 4200;
@@ -164,6 +216,9 @@ export default function App() {
   const [nextPrayer, setNextPrayer]   = useState(null);
   const [userCoords, setUserCoords]   = useState(null);
   const [settings, setSettings]       = useState(() => mergeSettings(loadStorage('settings', defaultSettings)));
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    try { return localStorage.getItem(ONBOARDING_KEY) !== '1'; } catch { return false; }
+  });
 
   const countdownRef   = useRef(null);
   const azanTimers     = useRef([]);
@@ -211,11 +266,19 @@ export default function App() {
 
     if (!np) return;
 
+    let lastRefreshAt = 0;
     const tick = () => {
-      const target = parseTime(data.timings[np]);
+      const target = getNextPrayerDate(data.timings, np);
+      if (!target) return;
       const diff = Math.floor((target - new Date()) / 1000);
       if (diff <= 0) {
-        if (lastSearch) performSearch(lastSearch, false);
+        // Throttle background refresh to once every 5 min so an offline error
+        // can't spin in a tight loop with the cached fallback.
+        const now = Date.now();
+        if (lastSearch && now - lastRefreshAt > 5 * 60 * 1000) {
+          lastRefreshAt = now;
+          performSearch(lastSearch, false);
+        }
         return;
       }
       const h = Math.floor(diff / 3600);
@@ -320,7 +383,7 @@ export default function App() {
           notifications: [{
             id: NOTIFICATION_ID_BASE + NOTIFICATION_ID_SPAN - 1,
             title: 'Azan Times — test',
-            body: 'Notifications are working. ✅',
+            body: 'Notifications are working.',
             schedule: { at: new Date(Date.now() + 1500) },
           }],
         });
@@ -332,15 +395,15 @@ export default function App() {
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') return;
     }
-    new Notification('🕌 Azan Times — test', {
-      body: 'Notifications are working. ✅',
+    new Notification('Azan Times — test', {
+      body: 'Notifications are working.',
     });
   }
 
   function fireNotification(prayerName, minutes) {
     if (!('Notification' in window)) return;
     if (Notification.permission === 'granted') {
-      new Notification('🕌 Azan Times', {
+      new Notification('Azan Times', {
         body: `${prayerName} prayer starts in ${minutes} minute${minutes !== 1 ? 's' : ''}.`,
       });
     }
@@ -348,14 +411,25 @@ export default function App() {
 
   async function requestNotifPermission() {
     if (isNative) {
+      const cur = await LocalNotifications.checkPermissions();
+      if (cur.display === 'denied') return { ok: false, reason: 'denied-previously' };
       const status = await LocalNotifications.requestPermissions();
-      if (status.display === 'granted') updateSetting('notifEnabled', true);
-      return;
+      if (status.display === 'granted') {
+        updateSetting('notifEnabled', true);
+        return { ok: true };
+      }
+      return { ok: false, reason: status.display === 'denied' ? 'denied' : 'unavailable' };
     }
     if ('Notification' in window) {
+      if (Notification.permission === 'denied') return { ok: false, reason: 'denied-previously' };
       const perm = await Notification.requestPermission();
-      if (perm === 'granted') updateSetting('notifEnabled', true);
+      if (perm === 'granted') {
+        updateSetting('notifEnabled', true);
+        return { ok: true };
+      }
+      return { ok: false, reason: perm === 'denied' ? 'denied' : 'default' };
     }
+    return { ok: false, reason: 'unsupported' };
   }
 
   function updateSetting(key, val) {
@@ -526,15 +600,28 @@ export default function App() {
   }
 
   function handleLocate() {
-    if (!navigator.geolocation) { setError('Geolocation not supported.'); return; }
-    setLoading(true);
-    setError(null);
-    setShowSearch(false);
-    navigator.geolocation.getCurrentPosition(
-      pos => performSearch({ type: 'coords', lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => { setLoading(false); setError('Location access denied. Search for a city instead.'); },
-      { enableHighAccuracy: true, maximumAge: 5 * 60 * 1000, timeout: 10000 }
-    );
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        setError('Geolocation not supported.');
+        resolve({ ok: false, reason: 'unsupported' });
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      setShowSearch(false);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          performSearch({ type: 'coords', lat: pos.coords.latitude, lng: pos.coords.longitude });
+          resolve({ ok: true });
+        },
+        (err) => {
+          setLoading(false);
+          setError('Location access denied. Search for a city instead.');
+          resolve({ ok: false, reason: err?.code === 1 ? 'denied' : 'failed' });
+        },
+        { enableHighAccuracy: true, maximumAge: 5 * 60 * 1000, timeout: 20000 }
+      );
+    });
   }
 
   function handleTabChange(tab) {
@@ -576,6 +663,10 @@ export default function App() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   const isNightSky = skyKey === 'isha' || skyKey === 'fajr';
+  const completeOnboarding = () => {
+    try { localStorage.setItem(ONBOARDING_KEY, '1'); } catch {}
+    setShowOnboarding(false);
+  };
   return (
     <div className="app">
       {/* Sky-of-day full-bleed gradient layer */}
@@ -596,6 +687,18 @@ export default function App() {
           }}
         />
       ))}
+
+      {/* ── Onboarding (first launch) ── */}
+      {showOnboarding && (
+        <Onboarding
+          initialMethodId={settings.prayer.methodId}
+          onLocate={() => { handleLocate(); }}
+          onManualLocation={() => { setShowSearch(true); }}
+          onAllowNotifications={() => { requestNotifPermission(); }}
+          onMethodChange={(id) => updatePrayerSetting('methodId', id)}
+          onComplete={completeOnboarding}
+        />
+      )}
 
       {/* ── Settings Panel ── */}
       {showSettings && (
@@ -963,31 +1066,44 @@ export default function App() {
         {loading && (
           <div className="status-msg">
             <div className="spinner" />
-            <p>Loading prayer times…</p>
+            <p>{t('status.loading')}</p>
           </div>
         )}
 
         {!loading && error && (
           <div className="error-box">
-            <div className="error-icon">😕</div>
+            <div className="error-icon" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9"/>
+                <path d="M12 8v5"/>
+                <circle cx="12" cy="16.5" r="0.6" fill="currentColor"/>
+              </svg>
+            </div>
             <div className="error-title">{error}</div>
-            <div className="error-hint">💡 Try "Makkah", "Istanbul", "Cairo, Egypt"</div>
+            <div className="error-hint">{t('status.tryHint')}</div>
           </div>
         )}
 
         {!loading && !error && !data && (
           <div className="welcome-state">
-            <div className="welcome-mosque">🕌</div>
+            <div className="welcome-mosque" aria-hidden="true">
+              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 21V11c0-2 2-4 4-4h8c2 0 4 2 4 4v10"/>
+                <path d="M4 21h16"/>
+                <path d="M9 21v-4a3 3 0 0 1 6 0v4"/>
+                <path d="M12 3v4M10.5 4.5h3"/>
+              </svg>
+            </div>
             <p className="welcome-bismillah">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</p>
             <h2 className="welcome-title">{t('welcome.title')}</h2>
             <p className="welcome-text">{t('welcome.text')}</p>
-            <div className="welcome-divider">── ✦ ──</div>
           </div>
         )}
 
         {!loading && !error && data && (
           <>
-            {/* Location banner */}
+            {/* Location banner with inline actions */}
+            <div className="location-banner-row">
             <div className="location-banner">
               <div className="city-row">
                 <svg className="loc-pin" viewBox="0 0 24 24" fill="currentColor">
@@ -995,26 +1111,38 @@ export default function App() {
                 </svg>
                 <div className="city-name">{cityName}</div>
               </div>
-              <div className="date-info">{formatGregorianDate(data.date, lang)}</div>
-              {displayHijri && <div className="hijri">{formatHijriDate(displayHijri, lang)}</div>}
+              <div className="date-info">
+                {formatGregorianDate(data.date, lang)}
+                {displayHijri && <span className="hijri"> · {formatHijriDate(displayHijri, lang)}</span>}
+              </div>
             </div>
-
-            {/* Sun strip */}
-            <div className="sun-strip">
-              <div className="sun-item rise">
-                <div className="sun-icon"><PrayerIcon name="sunrise" size={18} /></div>
-                <div className="sun-detail">
-                  <div className="sun-label">{t('sun.sunrise')}</div>
-                  <div className="sun-time">{formatTime(data.timings.Sunrise, settings.use24h)}</div>
-                </div>
-              </div>
-              <div className="sun-item set">
-                <div className="sun-icon"><PrayerIcon name="maghrib" size={18} /></div>
-                <div className="sun-detail">
-                  <div className="sun-label">{t('sun.sunset')}</div>
-                  <div className="sun-time">{formatTime(data.timings.Sunset, settings.use24h)}</div>
-                </div>
-              </div>
+            <div className="header-inline-actions">
+              <button
+                className={`icon-action ${showSearch ? 'active' : ''}`}
+                onClick={() => setShowSearch(s => !s)}
+                aria-label="Search city"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+              </button>
+              <button
+                className="icon-action"
+                onClick={handleLocate}
+                aria-label="Use my location"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z"/>
+                  <circle cx="12" cy="9" r="2.5"/>
+                </svg>
+              </button>
+              <button className="icon-action" onClick={() => setShowSettings(true)} aria-label="Settings">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </button>
+            </div>
             </div>
 
             {/* Tabs */}
@@ -1025,7 +1153,8 @@ export default function App() {
                   className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
                   onClick={() => handleTabChange(tab)}
                 >
-                  {t(`tab.${tab}`)}
+                  <TabIcon name={tab} />
+                  <span className="tab-label">{t(`tab.${tab}`)}</span>
                 </button>
               ))}
             </div>
@@ -1036,20 +1165,16 @@ export default function App() {
                 {/* ── Countdown Hero (top) ── */}
                 {nextPrayerData && (
                   <div className="countdown-hero">
-                    <div className="countdown-hero-top-bar" />
                     <div className="hero-sun" aria-hidden="true" />
 
-                    {/* Large glowing prayer icon */}
-                    <div className="hero-icon-wrap">
-                      <div className="hero-icon-ring" />
-                      <div className="hero-icon"><PrayerIcon name={nextPrayerData.key} size={48} stroke={1.4} /></div>
-                    </div>
-
-                    <div className="countdown-hero-names">
-                      <span className="countdown-name-ar">{nextPrayerData.arabic}</span>
-                      <span className="countdown-name-en">{nextPrayerData.name}</span>
-                    </div>
                     <div className="countdown-hero-label">{t('countdown.timeRemaining')}</div>
+                    <div className="countdown-hero-names">
+                      <span className="countdown-name-en">{nextPrayerData.name}</span>
+                      <span className="countdown-name-ar">{nextPrayerData.arabic}</span>
+                    </div>
+                    <div className="countdown-prayer-time">
+                      {t('countdown.beginsAt')} {formatTime(data.timings[nextPrayerData.key], settings.use24h)}
+                    </div>
                     <div className="countdown-digits">
                       <div className="digit-block">
                         <span className="digit-num">{pad(countdown.h)}</span>
@@ -1065,10 +1190,6 @@ export default function App() {
                         <span className="digit-num">{pad(countdown.s)}</span>
                         <span className="digit-label">{t('countdown.seconds')}</span>
                       </div>
-                    </div>
-                    {/* Prayer time */}
-                    <div className="countdown-prayer-time">
-                      ◈ {t('countdown.beginsAt')} {formatTime(data.timings[nextPrayerData.key], settings.use24h)}
                     </div>
                     {/* Progress inside hero */}
                     {progress && (
@@ -1086,16 +1207,30 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Section divider */}
-                <div className="section-divider">
-                  <span className="div-line" />
-                  <span className="div-icon">☽</span>
-                  <span className="div-line" />
+                {/* Sun strip — sits between hero and the prayer list */}
+                <div className="sun-strip">
+                  <div className="sun-item rise">
+                    <div className="sun-icon"><PrayerIcon name="sunrise" size={18} /></div>
+                    <div className="sun-detail">
+                      <div className="sun-label">{t('sun.sunrise')}</div>
+                      <div className="sun-time">{formatTime(data.timings.Sunrise, settings.use24h)}</div>
+                    </div>
+                  </div>
+                  <div className="sun-item set">
+                    <div className="sun-icon"><PrayerIcon name="maghrib" size={18} /></div>
+                    <div className="sun-detail">
+                      <div className="sun-label">{t('sun.sunset')}</div>
+                      <div className="sun-time">{formatTime(data.timings.Sunset, settings.use24h)}</div>
+                    </div>
+                  </div>
                 </div>
+
+                {/* Section header */}
+                <div className="section-eyebrow">{t('label.todaysPrayers')}</div>
 
                 {/* Prayer cards */}
                 <div className="prayers-grid">
-                  {PRAYERS.map(p => {
+                  {PRAYERS.filter(p => p.obligatory !== false && p.key !== 'sunrise' && p.key !== 'Sunrise').map(p => {
                     const isNext   = p.key === nextPrayer;
                     const isActive = p.key === activePrayer;
                     return (
@@ -1142,6 +1277,7 @@ export default function App() {
                 weeklyData={weeklyData}
                 loading={weeklyLoading}
                 use24h={settings.use24h}
+                onReload={lastSearch ? () => loadWeekly(lastSearch) : null}
               />
             )}
 
@@ -1169,8 +1305,7 @@ export default function App() {
         )}
 
         <div className="footer">
-          {t('footer.poweredBy')} <a href="https://aladhan.com/prayer-times-api" target="_blank" rel="noreferrer">Aladhan API</a> ·
-          {' '}{t('footer.audioBy')} <a href="https://islamic.network" target="_blank" rel="noreferrer">Islamic Network</a>
+          {t('footer.poweredBy')} <a href="https://aladhan.com/prayer-times-api" target="_blank" rel="noreferrer">Aladhan API</a>
         </div>
       </div>
     </div>
