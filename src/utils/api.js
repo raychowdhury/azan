@@ -18,34 +18,36 @@ async function request(url, errMsg) {
   }
 }
 
-export async function fetchByCity(city, country, method) {
-  const params = new URLSearchParams({ city, country: country || '', method });
+export async function fetchByCity(city, country, method, school = '0') {
+  const params = new URLSearchParams({ city, country: country || '', method, school });
   return request(`${BASE}/timingsByCity?${params}`, `City not found: "${city}". Try a different name.`);
 }
 
-export async function fetchByCoords(lat, lng, method) {
-  const params = new URLSearchParams({ latitude: lat, longitude: lng, method });
+export async function fetchByCoords(lat, lng, method, school = '0') {
+  const params = new URLSearchParams({ latitude: lat, longitude: lng, method, school });
   return request(`${BASE}/timings?${params}`, 'Could not fetch prayer times for your location.');
 }
 
-export async function fetchWeeklyByCity(city, country, method) {
+export async function fetchWeeklyByCity(city, country, method, school = '0') {
   const now = new Date();
   const params = new URLSearchParams({
     city,
     country: country || '',
     method,
+    school,
     month: now.getMonth() + 1,
     year: now.getFullYear(),
   });
   return request(`${BASE}/calendarByCity?${params}`, 'Could not fetch weekly prayer times.');
 }
 
-export async function fetchWeeklyByCoords(lat, lng, method) {
+export async function fetchWeeklyByCoords(lat, lng, method, school = '0') {
   const now = new Date();
   const params = new URLSearchParams({
     latitude: lat,
     longitude: lng,
     method,
+    school,
     month: now.getMonth() + 1,
     year: now.getFullYear(),
   });

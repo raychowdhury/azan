@@ -7,7 +7,11 @@ import {
   DEFAULT_PRAYER_SETTINGS,
   METHOD_OPTIONS,
   buildComputedDay,
+  buildComputedDays,
   computePrayerTimes,
+  getCalculationMethodDetails,
+  getCalculationMethodOptionLabel,
+  madhabToApiSchool,
   methodToApiId,
   normalizePrayerSettings,
 } from './features/prayer-times/calculation';
@@ -28,6 +32,7 @@ import HijriCalendar from './components/HijriCalendar';
 import QiblaCompass from './components/QiblaCompass';
 import Tasbih from './components/Tasbih';
 import WeeklyView from './components/WeeklyView';
+import { toHijri } from './features/hijri/converter';
 import { useT } from './i18n';
 const isNative = Capacitor.isNativePlatform();
 const ReverseGeocoder = registerPlugin('ReverseGeocoder');
@@ -86,6 +91,41 @@ function timingDateFor(baseDate, timeStr) {
   return date;
 }
 
+function dateFromApiGregorian(apiDate) {
+  const raw = apiDate?.gregorian?.date;
+  if (!raw) return new Date();
+  const [day, month, year] = raw.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatGregorianDate(apiDate, lang) {
+  const apiWeekday = lang === 'ar'
+    ? apiDate?.gregorian?.weekday?.ar
+    : apiDate?.gregorian?.weekday?.en;
+  const weekday = apiWeekday || new Intl.DateTimeFormat(lang === 'ar' ? 'ar' : 'en', {
+    weekday: 'long',
+  }).format(dateFromApiGregorian(apiDate));
+  return [weekday, apiDate?.readable].filter(Boolean).join(' · ');
+}
+
+function hijriDateForDisplay(apiDate, timings, offsetDays, now) {
+  const gregorianDate = dateFromApiGregorian(apiDate);
+  const maghrib = timings?.Maghrib ? timingDateFor(gregorianDate, timings.Maghrib) : null;
+  const hijriBase = new Date(gregorianDate);
+
+  if (maghrib && now >= maghrib) {
+    hijriBase.setDate(hijriBase.getDate() + 1);
+  }
+
+  return toHijri(hijriBase, offsetDays);
+}
+
+function formatHijriDate(hijri, lang) {
+  return lang === 'ar'
+    ? `${hijri.day} ${hijri.monthNameAr} ${hijri.year}`
+    : `${hijri.day} ${hijri.monthNameEn} ${hijri.year} AH`;
+}
+
 function isScheduledPrayerNotification(notification) {
   return notification.id >= NOTIFICATION_ID_BASE
     && notification.id < NOTIFICATION_ID_BASE + NOTIFICATION_ID_SPAN;
@@ -118,6 +158,7 @@ export default function App() {
   const [showSearch, setShowSearch]   = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [countdown, setCountdown]     = useState({ h: 0, m: 0, s: 0 });
+  const [now, setNow]                 = useState(() => new Date());
   const [nextPrayer, setNextPrayer]   = useState(null);
   const [userCoords, setUserCoords]   = useState(null);
   const [settings, setSettings]       = useState(() => mergeSettings(loadStorage('settings', defaultSettings)));
@@ -145,6 +186,11 @@ export default function App() {
   useEffect(() => {
     if (showSearch) searchInputRef.current?.focus();
   }, [showSearch]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60 * 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // ── Countdown interval ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -181,7 +227,8 @@ export default function App() {
 
     if (isNative) {
       if (settings.notifEnabled) {
-        scheduleNativeNotifications(data.timings, settings.notifications, userCoords).catch(() => {});
+        const notificationCoords = lastSearch?.type === 'coords' ? userCoords : null;
+        scheduleNativeNotifications(data.timings, settings.notifications, notificationCoords).catch(() => {});
       } else {
         LocalNotifications.getPending()
           .then(pending => pending.notifications
@@ -215,7 +262,7 @@ export default function App() {
       }
     });
     return () => azanTimers.current.forEach(clearTimeout);
-  }, [data, settings.azanEnabled, settings.notifEnabled, settings.notifications, userCoords]);
+  }, [data, settings.azanEnabled, settings.notifEnabled, settings.notifications, userCoords, lastSearch]);
 
   function stopAudio() {
     if (audioRef.current) {
@@ -346,14 +393,16 @@ export default function App() {
     try {
       let result;
       let resolvedParams;
+      const method = methodToApiId(settings.prayer.methodId);
+      const school = madhabToApiSchool(settings.prayer.madhab);
       if (params.type === 'city') {
-        result = await fetchByCity(params.city, params.country, methodToApiId(settings.prayer.methodId));
+        result = await fetchByCity(params.city, params.country, method, school);
         const coords = extractCoords(result, null);
         result = buildComputedDay(result, coords, settings.prayer);
         if (coords) setUserCoords(coords);
         resolvedParams = { ...params, label: searchLabel(params) };
       } else {
-        result = await fetchByCoords(params.lat, params.lng, methodToApiId(settings.prayer.methodId));
+        result = await fetchByCoords(params.lat, params.lng, method, school);
         result = buildComputedDay(result, { lat: params.lat, lng: params.lng }, settings.prayer);
         setUserCoords({ lat: params.lat, lng: params.lng });
         resolvedParams = { ...params, label: await nativeLocationLabel(params) };
@@ -443,13 +492,17 @@ export default function App() {
     setWL(true);
     try {
       let result;
+      let coords = userCoords;
+      const method = methodToApiId(settings.prayer.methodId);
+      const school = madhabToApiSchool(settings.prayer.madhab);
       if (!params) throw new Error('No location');
       if (params.type === 'city') {
-        result = await fetchWeeklyByCity(params.city, params.country, methodToApiId(settings.prayer.methodId));
+        result = await fetchWeeklyByCity(params.city, params.country, method, school);
       } else {
-        result = await fetchWeeklyByCoords(params.lat, params.lng, methodToApiId(settings.prayer.methodId));
+        result = await fetchWeeklyByCoords(params.lat, params.lng, method, school);
+        coords = { lat: params.lat, lng: params.lng };
       }
-      setWeeklyData(result);
+      setWeeklyData(buildComputedDays(result, coords, settings.prayer));
     } catch {} finally {
       setWL(false);
     }
@@ -489,9 +542,14 @@ export default function App() {
     : data
       ? 'Current Location'
       : '';
+  const selectedMethodDetails = getCalculationMethodDetails(settings.prayer.methodId);
+  const displayHijri = data
+    ? hijriDateForDisplay(data.date, data.timings, settings.hijriOffset, now)
+    : null;
 
   useEffect(() => {
     if (lastSearch) performSearch(lastSearch, false);
+    if (activeTab === 'weekly' && lastSearch) loadWeekly(lastSearch);
   }, [
     settings.prayer.methodId,
     settings.prayer.madhab,
@@ -738,11 +796,11 @@ export default function App() {
                 onChange={e => updatePrayerSetting('methodId', e.target.value)}
               >
                 {METHOD_OPTIONS.map(m => (
-                  <option key={m.id} value={m.id}>{m.label}</option>
+                  <option key={m.id} value={m.id}>{getCalculationMethodOptionLabel(m.id)}</option>
                 ))}
               </select>
               <p className="setting-hint">
-                {METHOD_OPTIONS.find(m => m.id === settings.prayer.methodId)?.description}
+                {selectedMethodDetails.summary}
               </p>
             </div>
 
@@ -774,34 +832,6 @@ export default function App() {
                   <option value="SeventhOfTheNight">Seventh of the night</option>
                   <option value="TwilightAngle">Twilight angle</option>
                 </select>
-              </div>
-            )}
-
-            {settings.prayer.methodId === 'Other' && (
-              <div className="setting-group">
-                <label className="setting-label">Custom Angles</label>
-                <div className="number-grid">
-                  <label>
-                    <span>Fajr angle</span>
-                    <input
-                      type="number"
-                      min="10"
-                      max="25"
-                      value={settings.prayer.fajrAngle}
-                      onChange={e => updatePrayerSetting('fajrAngle', e.target.value)}
-                    />
-                  </label>
-                  <label>
-                    <span>Isha angle</span>
-                    <input
-                      type="number"
-                      min="10"
-                      max="25"
-                      value={settings.prayer.ishaAngle}
-                      onChange={e => updatePrayerSetting('ishaAngle', e.target.value)}
-                    />
-                  </label>
-                </div>
               </div>
             )}
 
@@ -936,12 +966,8 @@ export default function App() {
                 </svg>
                 <div className="city-name">{cityName}</div>
               </div>
-              <div className="date-info">{data.date.readable}</div>
-              <div className="hijri">
-                {data.date.hijri.day} {data.date.hijri.month.ar} {data.date.hijri.year}
-                <span className="hijri-sep">·</span>
-                {data.date.hijri.day} {data.date.hijri.month.en} {data.date.hijri.year} AH
-              </div>
+              <div className="date-info">{formatGregorianDate(data.date, lang)}</div>
+              {displayHijri && <div className="hijri">{formatHijriDate(displayHijri, lang)}</div>}
             </div>
 
             {/* Sun strip */}
