@@ -14,7 +14,7 @@
 | Secondary category | Reference |
 | Age rating | 4+ |
 | Marketing version | `1.2.0` |
-| Build number | `3` |
+| Build number | `4` (supersedes build 3 — never submitted) |
 | Copyright | `© 2026 Rayhan Chowdhury` |
 | Routing app coverage file | None |
 | Encryption (ITSAppUsesNonExemptEncryption) | `false` (HTTPS only) |
@@ -57,15 +57,16 @@ azan,prayer,salah,salat,qibla,fajr,maghrib,muslim,islamic,tasbih,dhikr,namaz,ath
 
 A full visual redesign — calmer, more focused, more beautiful.
 
-- New cream + deep-green + gold palette with custom monoline icons
-- Sky-of-day background that shifts through Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha
-- Five-panel onboarding for first launch
-- City search with live suggestions
-- Bundled adhan chime — no third-party servers, plays offline
-- New Today layout with countdown + progress to next prayer
-- Cleaner Weekly, Hijri, Tasbih, and Qibla screens
-- Faster cold start
-- App icon and launch screen redesigned
+• New cream + deep-green + gold palette with custom monoline icons
+• Sky-of-day background that shifts through Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha
+• Five-panel onboarding for first launch
+• City search with live suggestions
+• Auto-detects your country and picks the best calculation method (UmmAlQura in Saudi, Karachi in South Asia, Egyptian in MENA, ISNA in North America, etc.)
+• Bundled adhan chime — plays offline, no third-party servers
+• New Today layout with countdown and progress to the next prayer
+• Cleaner Weekly, Hijri, Tasbih, and Qibla screens
+• Faster cold start
+• Redesigned app icon and launch screen
 
 ## Review Notes (Apple App Review)
 
@@ -163,5 +164,8 @@ In Xcode:
 - [x] Onboarding handles denied location + denied notifications gracefully
 - [x] Settings deep-link hint present when permissions previously denied
 - [x] Service worker disabled for native build (`CAPACITOR_BUILD=1`)
-- [ ] Final QA pass on physical device — onboarding, prayer notifications fire at scheduled time, Qibla compass tracks heading, Tasbih persists count
-- [ ] Bump `CURRENT_PROJECT_VERSION` if re-uploading
+- [x] Final QA pass on physical device (build 3) — onboarding, notifications, Qibla, Tasbih all functional
+- [x] CURRENT_PROJECT_VERSION bumped 3 → 4 for build 4 upload
+- [x] Copilot review fixes applied (onboarding promise return, adhan_chime playback, search debounce cleanup, comment correctness)
+- [x] Auto country → calculation method detection added
+- [ ] One more QA pass on build 4 covering: onboarding completes after granted location, default Adhan Chime plays at preview, country auto-detection picks right method on first launch
