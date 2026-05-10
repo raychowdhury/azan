@@ -11,6 +11,7 @@ import {
   computePrayerTimes,
   getCalculationMethodDetails,
   madhabToApiSchool,
+  methodForCountry,
   methodToApiId,
   normalizePrayerSettings,
 } from './features/prayer-times/calculation';
@@ -163,18 +164,22 @@ function isScheduledPrayerNotification(notification) {
     && notification.id < NOTIFICATION_ID_BASE + NOTIFICATION_ID_SPAN;
 }
 
-async function nativeLocationLabel(params) {
-  if (!isNative || params.type !== 'coords') return searchLabel(params) || 'Current Location';
-
+async function nativeReverseGeocode(params) {
+  if (!isNative || params.type !== 'coords') return null;
   try {
-    const place = await ReverseGeocoder.reverseGeocode({
+    return await ReverseGeocoder.reverseGeocode({
       latitude: params.lat,
       longitude: params.lng,
     });
-    return place.displayName || [place.city, place.region, place.country].filter(Boolean).slice(0, 2).join(', ') || 'Current Location';
   } catch {
-    return searchLabel(params) || 'Current Location';
+    return null;
   }
+}
+
+async function nativeLocationLabel(params, place) {
+  if (!isNative || params.type !== 'coords') return searchLabel(params) || 'Current Location';
+  if (!place) return searchLabel(params) || 'Current Location';
+  return place.displayName || [place.city, place.region, place.country].filter(Boolean).slice(0, 2).join(', ') || 'Current Location';
 }
 
 function TabIcon({ name }) {
@@ -521,7 +526,28 @@ export default function App() {
         result = await fetchByCoords(params.lat, params.lng, method, school);
         result = buildComputedDay(result, { lat: params.lat, lng: params.lng }, settings.prayer);
         setUserCoords({ lat: params.lat, lng: params.lng });
-        resolvedParams = { ...params, label: await nativeLocationLabel(params) };
+        const place = await nativeReverseGeocode(params);
+        resolvedParams = {
+          ...params,
+          label: await nativeLocationLabel(params, place),
+          countryCode: place?.countryCode || params.countryCode,
+        };
+        // Auto-pick calculation method from country, but never overwrite a
+        // method the user already explicitly confirmed.
+        const cc = resolvedParams.countryCode;
+        if (cc) {
+          const suggested = methodForCountry(cc);
+          if (suggested) {
+            setSettings((s) => {
+              if (s.prayer.methodAutoConfirmed) return s;
+              if (s.prayer.methodId === suggested) return s;
+              return {
+                ...s,
+                prayer: normalizePrayerSettings({ ...s.prayer, methodId: suggested }),
+              };
+            });
+          }
+        }
       }
       setData(result);
       setLastSearch(resolvedParams);
@@ -707,18 +733,20 @@ export default function App() {
       {/* ── Sky background (location + time driven) ── */}
       <div className="sky-layer" aria-hidden="true" />
       <div className="sky-orb" aria-hidden="true" />
-      {isNightSky && (
-        <>
-          <div className="sky-star" style={{ top: '12%', left: '18%' }} />
-          <div className="sky-star" style={{ top: '20%', left: '72%' }} />
-          <div className="sky-star" style={{ top: '8%', left: '48%' }} />
-          <div className="sky-star" style={{ top: '28%', left: '34%' }} />
-          <div className="sky-star" style={{ top: '15%', left: '88%' }} />
-          <div className="sky-star" style={{ top: '32%', left: '8%' }} />
-          <div className="sky-star" style={{ top: '6%', left: '62%' }} />
-          <div className="sky-star" style={{ top: '24%', left: '54%' }} />
-        </>
-      )}
+      {isNightSky && Array.from({ length: 18 }).map((_, i) => (
+        <div
+          key={i}
+          className="sky-star"
+          aria-hidden="true"
+          style={{
+            top: `${4 + ((i * 37) % 60)}%`,
+            left: `${4 + ((i * 71) % 92)}%`,
+            width: i % 4 === 0 ? 3 : 2,
+            height: i % 4 === 0 ? 3 : 2,
+            opacity: 0.3 + ((i * 53) % 50) / 100,
+          }}
+        />
+      ))}
       <div className="sky-veil" aria-hidden="true" />
 
       {/* ── Settings Panel ── */}
@@ -962,7 +990,10 @@ export default function App() {
               <select
                 className="method-select"
                 value={settings.prayer.methodId}
-                onChange={e => updatePrayerSetting('methodId', e.target.value)}
+                onChange={e => setSettings(s => ({
+                  ...s,
+                  prayer: normalizePrayerSettings({ ...s.prayer, methodId: e.target.value, methodAutoConfirmed: true }),
+                }))}
               >
                 {METHOD_OPTIONS.map(m => (
                   <option key={m.id} value={m.id}>{calculationMethodOptionLabel(t, m.id)}</option>

@@ -23,6 +23,35 @@ export const METHOD_OPTIONS = [
   { id: 'MoonsightingCommittee', apiId: '15', label: 'Moonsighting Committee Worldwide', authority: 'Moonsighting Committee Worldwide' },
 ];
 
+// Country (ISO 3166-1 alpha-2) → calculation method id mapping.
+// Mirrors what mainstream prayer apps (Athan Pro, Muslim Pro, Pillars) pick
+// based on the user's country. Falls back to MuslimWorldLeague when unknown.
+const COUNTRY_TO_METHOD = {
+  // GCC + Saudi-influenced
+  SA: 'UmmAlQura', KW: 'Kuwait', QA: 'Qatar', AE: 'Dubai',
+  OM: 'UmmAlQura', BH: 'Kuwait', YE: 'UmmAlQura',
+  // North Africa + Levant + Egyptian umbrella
+  EG: 'Egyptian', SD: 'Egyptian', LY: 'Egyptian', TN: 'Egyptian',
+  DZ: 'Egyptian', MA: 'Egyptian', SY: 'Egyptian', JO: 'Egyptian',
+  PS: 'Egyptian', LB: 'Egyptian', IQ: 'Egyptian',
+  // South Asia
+  PK: 'Karachi', BD: 'Karachi', IN: 'Karachi', LK: 'Karachi',
+  NP: 'Karachi', AF: 'Karachi',
+  // North America
+  US: 'NorthAmerica', CA: 'NorthAmerica', MX: 'NorthAmerica',
+  // Turkey
+  TR: 'Turkey',
+  // SE Asia
+  ID: 'Singapore', MY: 'Singapore', SG: 'Singapore', BN: 'Singapore',
+  // Iran
+  IR: 'Tehran',
+};
+
+export function methodForCountry(countryCode) {
+  if (!countryCode) return null;
+  return COUNTRY_TO_METHOD[String(countryCode).toUpperCase()] || null;
+}
+
 export const DEFAULT_PRAYER_SETTINGS = {
   methodId: 'MuslimWorldLeague',
   madhab: 'shafi',
@@ -30,6 +59,10 @@ export const DEFAULT_PRAYER_SETTINGS = {
   fajrAngle: 18,
   ishaAngle: 17,
   ishaInterval: '',
+  // True once user has explicitly confirmed the calculation method
+  // (via onboarding or Settings). While false, an auto-detected country
+  // map can override the default — but never overwrites a manual choice.
+  methodAutoConfirmed: false,
   manualOffsets: {
     Fajr: 0,
     Sunrise: 0,
