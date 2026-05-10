@@ -1,79 +1,29 @@
 // Central registry for in-app Adhan playback sources.
 //
-// Notification sounds (short, bundled .wav files used by iOS) live in
-// src/features/notifications/settings.js — those have a 30-second iOS limit
-// and must be present in the iOS app bundle. The sources below are full
-// Adhan audio that only play while the app is open.
+// All sources here are bundled with the app — no third-party network
+// dependencies. Playback only happens while the app is in the foreground;
+// scheduled iOS Local Notifications use the short .wav files in
+// ios/App/App/NotificationSounds/ for actual at-prayer-time alerts.
 //
-// URL VERIFICATION HISTORY:
-//   v1.0 used cdn.islamic.network/prayer-times/audio/... which returns
-//   HTTP 403 (bucket access denied — that path does not exist on
-//   islamic.network's public CDN). v1.1.0 falls back to islamcan.com which
-//   returns 200 / audio/mpeg for azan1.mp3 ... azan9.mp3.
-//
-// LABELING:
-//   Specific reciter or location names (Mishary, Makkah, Madinah, etc.)
-//   are NOT used because the voice mapping for each azan{N}.mp3 file is
-//   not authoritative. Until each track is verified, options are exposed
-//   as generic "Adhan 1 ... Adhan 5" with `unverified: true`.
-//
-// LOCAL FALLBACKS:
-//   Beep   — plays public/beep.wav (also bundled in iOS as a notification
-//            sound). Default first-run option.
-//   Silent — performs no playback at all. Never fetches network audio.
-
-const ISLAMCAN = 'https://www.islamcan.com/audio/adhan';
-
-function islamcanTrack(filename) {
-  return () => `${ISLAMCAN}/${filename}`;
-}
+// SOURCES:
+//   Adhan Chime — short adhan-style chime, bundled (adhan_chime.wav).
+//   Beep        — single short tone, bundled (beep.wav).
+//   Silent      — no audio. Notifications still fire if enabled.
 
 export const ADHAN_SOURCES = [
   {
-    id: 'adhan1',
-    label: 'Adhan 1',
-    description: 'Streaming Adhan recording.',
-    urlFor: islamcanTrack('azan1.mp3'),
-    attribution: 'islamcan.com',
-    unverified: true,
-  },
-  {
-    id: 'adhan2',
-    label: 'Adhan 2',
-    description: 'Streaming Adhan recording.',
-    urlFor: islamcanTrack('azan2.mp3'),
-    attribution: 'islamcan.com',
-    unverified: true,
-  },
-  {
-    id: 'adhan3',
-    label: 'Adhan 3',
-    description: 'Streaming Adhan recording.',
-    urlFor: islamcanTrack('azan3.mp3'),
-    attribution: 'islamcan.com',
-    unverified: true,
-  },
-  {
-    id: 'adhan4',
-    label: 'Adhan 4',
-    description: 'Streaming Adhan recording.',
-    urlFor: islamcanTrack('azan4.mp3'),
-    attribution: 'islamcan.com',
-    unverified: true,
-  },
-  {
-    id: 'adhan5',
-    label: 'Adhan 5',
-    description: 'Streaming Adhan recording.',
-    urlFor: islamcanTrack('azan5.mp3'),
-    attribution: 'islamcan.com',
-    unverified: true,
+    id: 'adhan_chime',
+    label: 'Adhan Chime',
+    description: 'Bundled short adhan chime — plays when app is open.',
+    urlFor: () => '/adhan_chime.wav',
+    builtin: 'adhan_chime',
+    verified: true,
   },
   {
     id: 'beep',
     label: 'Beep',
     description: 'Short bundled tone.',
-    urlFor: () => null,
+    urlFor: () => '/beep.wav',
     builtin: 'beep',
     verified: true,
   },
@@ -87,16 +37,21 @@ export const ADHAN_SOURCES = [
   },
 ];
 
-// Default to the bundled Beep — verified, offline, and labeled honestly.
-export const DEFAULT_ADHAN_SOURCE = 'beep';
+// Default to the bundled adhan chime.
+export const DEFAULT_ADHAN_SOURCE = 'adhan_chime';
 
-// Map legacy ids saved by previous v1.1.0 builds onto the new generic ids.
+// Map legacy ids saved by previous builds onto the new bundled ids.
 const LEGACY_ID_MAP = {
-  mishary:  'adhan1',
-  makkah:   'adhan2',
-  madinah:  'adhan3',
-  egyptian: 'adhan4',
-  turkish:  'adhan5',
+  mishary:  'adhan_chime',
+  makkah:   'adhan_chime',
+  madinah:  'adhan_chime',
+  egyptian: 'adhan_chime',
+  turkish:  'adhan_chime',
+  adhan1:   'adhan_chime',
+  adhan2:   'adhan_chime',
+  adhan3:   'adhan_chime',
+  adhan4:   'adhan_chime',
+  adhan5:   'adhan_chime',
 };
 
 export function normalizeAdhanSourceId(id) {

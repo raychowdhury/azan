@@ -2,10 +2,14 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Skip PWA service worker for native iOS/Android builds — Capacitor serves
+// the bundle locally so SW only adds first-launch parse + cache cost.
+const isNative = process.env.CAPACITOR_BUILD === '1';
+
 export default defineConfig({
   plugins: [
     react(),
-    VitePWA({
+    !isNative && VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
@@ -58,5 +62,5 @@ export default defineConfig({
         ],
       },
     }),
-  ],
+  ].filter(Boolean),
 })
