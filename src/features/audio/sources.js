@@ -66,6 +66,8 @@ export function getAdhanSource(id) {
 
 export function adhanUrlFor(sourceId, prayerKey) {
   const source = getAdhanSource(sourceId);
-  if (source.builtin) return null;
+  // 'silent' is the only no-op builtin. All other builtins (e.g. adhan_chime,
+  // beep) bundle a real URL via urlFor() and should be played normally.
+  if (source.builtin === 'silent') return null;
   return source.urlFor(prayerKey);
 }

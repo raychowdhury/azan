@@ -20,13 +20,18 @@ export default function CitySearchInput({
   // Debounce + fetch on value change
   useEffect(() => {
     const q = (value || '').trim();
+    // Always clear any pending debounce + in-flight request first so a
+    // shrinking query doesn't surface stale results from an earlier search.
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (abortRef.current) abortRef.current.abort();
+
     if (q.length < 2) {
       setSuggestions([]);
       setLoading(false);
+      setOpen(false);
+      setActiveIdx(-1);
       return;
     }
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (abortRef.current) abortRef.current.abort();
     debounceRef.current = setTimeout(async () => {
       const ctrl = new AbortController();
       abortRef.current = ctrl;
@@ -41,6 +46,7 @@ export default function CitySearchInput({
     }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (abortRef.current) abortRef.current.abort();
     };
   }, [value]);
 

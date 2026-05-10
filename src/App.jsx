@@ -300,8 +300,9 @@ export default function App() {
     azanTimers.current = [];
     if (!data) return;
 
-    // Defer native bridge calls + timer scheduling so they don't block
-    // first paint. setTimeout 0 yields to render; idle callback even better.
+    // Defer the native LocalNotifications bridge calls (schedule + getPending)
+    // so they don't block first paint. The in-process setTimeout chain for
+    // azan/web-notifications below is light and runs synchronously.
     const idle = (cb) => (window.requestIdleCallback
       ? window.requestIdleCallback(cb, { timeout: 1500 })
       : setTimeout(cb, 0));
@@ -717,9 +718,9 @@ export default function App() {
       {showOnboarding && (
         <Onboarding
           initialMethodId={settings.prayer.methodId}
-          onLocate={() => { handleLocate(); }}
+          onLocate={() => handleLocate()}
           onManualLocation={() => { setShowSearch(true); }}
-          onAllowNotifications={() => { requestNotifPermission(); }}
+          onAllowNotifications={() => requestNotifPermission()}
           onMethodChange={(id) => updatePrayerSetting('methodId', id)}
           onComplete={completeOnboarding}
         />
