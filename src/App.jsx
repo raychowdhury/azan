@@ -12,6 +12,7 @@ import {
   getCalculationMethodDetails,
   getCalculationMethodOptionLabel,
   madhabToApiSchool,
+  methodForCountry,
   methodToApiId,
   normalizePrayerSettings,
 } from './features/prayer-times/calculation';
@@ -187,18 +188,22 @@ function isScheduledPrayerNotification(notification) {
     && notification.id < NOTIFICATION_ID_BASE + NOTIFICATION_ID_SPAN;
 }
 
-async function nativeLocationLabel(params) {
-  if (!isNative || params.type !== 'coords') return searchLabel(params) || 'Current Location';
-
+async function nativeReverseGeocode(params) {
+  if (!isNative || params.type !== 'coords') return null;
   try {
-    const place = await ReverseGeocoder.reverseGeocode({
+    return await ReverseGeocoder.reverseGeocode({
       latitude: params.lat,
       longitude: params.lng,
     });
-    return place.displayName || [place.city, place.region, place.country].filter(Boolean).slice(0, 2).join(', ') || 'Current Location';
   } catch {
-    return searchLabel(params) || 'Current Location';
+    return null;
   }
+}
+
+async function nativeLocationLabel(params, place) {
+  if (!isNative || params.type !== 'coords') return searchLabel(params) || 'Current Location';
+  if (!place) return searchLabel(params) || 'Current Location';
+  return place.displayName || [place.city, place.region, place.country].filter(Boolean).slice(0, 2).join(', ') || 'Current Location';
 }
 
 export default function App() {
@@ -504,7 +509,28 @@ export default function App() {
         result = await fetchByCoords(params.lat, params.lng, method, school);
         result = buildComputedDay(result, { lat: params.lat, lng: params.lng }, settings.prayer);
         setUserCoords({ lat: params.lat, lng: params.lng });
-        resolvedParams = { ...params, label: await nativeLocationLabel(params) };
+        const place = await nativeReverseGeocode(params);
+        resolvedParams = {
+          ...params,
+          label: await nativeLocationLabel(params, place),
+          countryCode: place?.countryCode || params.countryCode,
+        };
+        // Auto-pick calculation method from country, but never overwrite a
+        // method the user already explicitly confirmed.
+        const cc = resolvedParams.countryCode;
+        if (cc) {
+          const suggested = methodForCountry(cc);
+          if (suggested) {
+            setSettings((s) => {
+              if (s.prayer.methodAutoConfirmed) return s;
+              if (s.prayer.methodId === suggested) return s;
+              return {
+                ...s,
+                prayer: normalizePrayerSettings({ ...s.prayer, methodId: suggested }),
+              };
+            });
+          }
+        }
       }
       setData(result);
       setLastSearch(resolvedParams);
@@ -721,7 +747,12 @@ export default function App() {
           onLocate={() => handleLocate()}
           onManualLocation={() => { setShowSearch(true); }}
           onAllowNotifications={() => requestNotifPermission()}
-          onMethodChange={(id) => updatePrayerSetting('methodId', id)}
+          onMethodChange={(id) => {
+            setSettings((s) => ({
+              ...s,
+              prayer: normalizePrayerSettings({ ...s.prayer, methodId: id, methodAutoConfirmed: true }),
+            }));
+          }}
           onComplete={completeOnboarding}
         />
       )}
@@ -951,7 +982,10 @@ export default function App() {
               <select
                 className="method-select"
                 value={settings.prayer.methodId}
-                onChange={e => updatePrayerSetting('methodId', e.target.value)}
+                onChange={e => setSettings(s => ({
+                  ...s,
+                  prayer: normalizePrayerSettings({ ...s.prayer, methodId: e.target.value, methodAutoConfirmed: true }),
+                }))}
               >
                 {METHOD_OPTIONS.map(m => (
                   <option key={m.id} value={m.id}>{getCalculationMethodOptionLabel(m.id)}</option>

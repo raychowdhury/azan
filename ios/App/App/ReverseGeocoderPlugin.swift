@@ -34,6 +34,7 @@ public class ReverseGeocoderPlugin: CAPPlugin, CAPBridgedPlugin {
             let city = placemark.locality ?? placemark.subLocality ?? placemark.name
             let region = placemark.administrativeArea
             let country = placemark.country
+            let countryCode = placemark.isoCountryCode
             let displayName = [city, region]
                 .compactMap { $0 }
                 .filter { !$0.isEmpty }
@@ -43,6 +44,7 @@ public class ReverseGeocoderPlugin: CAPPlugin, CAPBridgedPlugin {
             if let city = city { response["city"] = city }
             if let region = region { response["region"] = region }
             if let country = country { response["country"] = country }
+            if let countryCode = countryCode { response["countryCode"] = countryCode.uppercased() }
             response["displayName"] = displayName.isEmpty ? (country ?? "Current Location") : displayName
 
             call.resolve(response)
