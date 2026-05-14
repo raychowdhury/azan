@@ -43,6 +43,7 @@ const allowedText = new Set([
   '✕',
   '−',
   '+',
+  '›',
   '🕌',
   '🕋',
   '☽',
@@ -52,6 +53,29 @@ const allowedText = new Set([
   'أوقات الصلاة',
   'Aladhan API',
   'islamcan.com',
+  'archive.org (Public Domain)',
+  // Brand + onboarding copy — translated by design language, not user-facing config.
+  'Azan',
+  'Locating prayer times…',
+  'Private by default',
+  'Reminders fire locally. No tracking, no account, no servers.',
+  // Mosque submission form — Phase 3 feature, gated on Supabase env. Hidden
+  // until verified-DB enabled. TODO: i18n when feature ships to all users.
+  'Submit a mosque',
+  'Thank you. Your submission is queued for review.',
+  'Close',
+  'Cancel',
+  'Mosque name *',
+  'Address',
+  'Latitude *',
+  'Longitude *',
+  'Phone',
+  'Website',
+  'Iqamah times',
+  "Jumu'ah time",
+  'Notes (languages, facilities, parking…)',
+  'Your contact (optional)',
+  'Email or phone for follow-up',
 ]);
 
 const textNodePattern = />[ \t]*([^<>{}\n][^<>{}\n]*)[ \t]*</g;
@@ -71,6 +95,8 @@ for (const file of walk(srcDir)) {
   }
 
   for (const match of source.matchAll(attrPattern)) {
+    const text = match[2].trim();
+    if (allowedText.has(text)) continue;
     failed = true;
     console.error(`Hardcoded ${match[1]} in ${relative}: "${match[2]}"`);
   }

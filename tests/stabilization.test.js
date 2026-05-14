@@ -47,7 +47,8 @@ describe('v1.2.0 stabilization utilities', () => {
   });
 
   it('maps legacy and unknown Adhan source ids to honest defaults', () => {
-    expect(normalizeAdhanSourceId('mishary')).toBe('adhan1');
+    // Legacy reciter ids now map to the bundled full Doha Adhan.
+    expect(normalizeAdhanSourceId('mishary')).toBe('doha');
     expect(normalizeAdhanSourceId('not-real')).toBe(DEFAULT_ADHAN_SOURCE);
   });
 
