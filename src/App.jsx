@@ -32,6 +32,7 @@ import HijriCalendar from './components/HijriCalendar';
 import QiblaCompass from './components/QiblaCompass';
 import Tasbih from './components/Tasbih';
 import WeeklyView from './components/WeeklyView';
+import NearbyMosques from './components/NearbyMosques';
 import PrayerIcon from './components/PrayerIcon';
 import Onboarding from './components/Onboarding';
 import LaunchScreen from './components/LaunchScreen';
@@ -84,6 +85,15 @@ function TabIcon({ name }) {
           <circle cx="9" cy="14" r="0.8" fill="currentColor" />
           <circle cx="15" cy="14" r="0.8" fill="currentColor" />
           <circle cx="12" cy="17" r="0.8" fill="currentColor" />
+        </svg>
+      );
+    case 'mosques':
+      return (
+        <svg {...props}>
+          <path d="M4 21V11c0-2 2-4 4-4h8c2 0 4 2 4 4v10" />
+          <path d="M4 21h16" />
+          <path d="M9 21v-4a3 3 0 0 1 6 0v4" />
+          <path d="M12 3v4M10.5 4.5h3" />
         </svg>
       );
     default:
@@ -1175,7 +1185,7 @@ export default function App() {
 
             {/* Tabs */}
             <div className="tabs">
-              {['today', 'weekly', 'qibla', 'hijri', 'tasbih'].map(tab => (
+              {['today', 'weekly', 'qibla', 'mosques', 'hijri', 'tasbih'].map(tab => (
                 <button
                   key={tab}
                   className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
@@ -1312,6 +1322,16 @@ export default function App() {
             {/* Qibla tab */}
             {activeTab === 'qibla' && (
               <QiblaCompass userCoords={userCoords} onLocate={handleLocate} />
+            )}
+
+            {/* Mosques tab */}
+            {activeTab === 'mosques' && (
+              <NearbyMosques
+                userCoords={userCoords}
+                onLocate={(coords) => {
+                  if (coords) setUserCoords(coords);
+                }}
+              />
             )}
 
             {/* Hijri tab */}
