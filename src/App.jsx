@@ -32,6 +32,7 @@ import QiblaCompass from './components/QiblaCompass';
 import Tasbih from './components/Tasbih';
 import WeeklyView from './components/WeeklyView';
 import NearbyMosques from './components/NearbyMosques';
+import CitySearchInput from './components/CitySearchInput';
 import { toHijri } from './features/hijri/converter';
 import { useT } from './i18n';
 import { reportError, reportEvent } from './utils/monitoring';
@@ -175,6 +176,58 @@ async function nativeLocationLabel(params) {
   }
 }
 
+function TabIcon({ name }) {
+  const props = {
+    width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none',
+    stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round',
+    strokeLinejoin: 'round', style: { display: 'block' },
+  };
+  switch (name) {
+    case 'today':
+      return (
+        <svg {...props}>
+          <path d="M4 11 12 4l8 7" />
+          <path d="M6 10v9a1 1 0 0 0 1 1h3v-5h4v5h3a1 1 0 0 0 1-1v-9" />
+        </svg>
+      );
+    case 'weekly':
+      return (
+        <svg {...props}>
+          <rect x="3" y="5" width="18" height="16" rx="3" />
+          <path d="M3 10h18M8 3v4M16 3v4" />
+        </svg>
+      );
+    case 'qibla':
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="m15 9-2 6-4 1 1-4Z" />
+        </svg>
+      );
+    case 'mosques':
+      return (
+        <svg {...props}>
+          <path d="M4 21V11c0-2 2-4 4-4h8c2 0 4 2 4 4v10" />
+          <path d="M4 21h16" />
+          <path d="M9 21v-4a3 3 0 0 1 6 0v4" />
+          <path d="M12 3v4M10.5 4.5h3" />
+        </svg>
+      );
+    case 'tasbih':
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="5" r="2" />
+          <path d="M12 7c-3 1-6 3-6 7a6 6 0 0 0 12 0c0-4-3-6-6-7Z" />
+          <circle cx="9" cy="14" r="0.8" fill="currentColor" />
+          <circle cx="15" cy="14" r="0.8" fill="currentColor" />
+          <circle cx="12" cy="17" r="0.8" fill="currentColor" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
 export default function App() {
   const { t, lang, setLang, languages } = useT();
   const [data, setData]               = useState(null);
@@ -187,6 +240,7 @@ export default function App() {
   const [activeTab, setActiveTab]     = useState('today');
   const [showSearch, setShowSearch]   = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHijri, setShowHijri]     = useState(false);
   const [countdown, setCountdown]     = useState({ h: 0, m: 0, s: 0 });
   const [now, setNow]                 = useState(() => new Date());
   const [nextPrayer, setNextPrayer]   = useState(null);
@@ -331,7 +385,12 @@ export default function App() {
     const source = getAdhanSource(settings.azanSource);
     if (source.builtin === 'silent') return;
     if (source.builtin === 'beep') { playAzanUrl('/beep.wav'); return; }
-    playAzanUrl(adhanUrlFor(settings.azanSource, 'Fajr'));
+    playAzanUrl(adhanUrlFor(settings.azanSource, 'Dhuhr'));
+    // Auto-stop preview after 12s so full Adhan doesn't play out.
+    const previewAudio = audioRef.current;
+    setTimeout(() => {
+      if (audioRef.current === previewAudio) stopAudio();
+    }, 12000);
   }
 
   async function fireTestNotification() {
@@ -637,6 +696,22 @@ export default function App() {
   return (
     <div className="app">
       {/* ── Settings Panel ── */}
+      {showHijri && (
+        <div className="settings-overlay" onClick={() => setShowHijri(false)}>
+          <div className="settings-panel hijri-panel" onClick={e => e.stopPropagation()}>
+            <div className="settings-header">
+              <h3>{t('tab.hijri')}</h3>
+              <button className="settings-close" onClick={() => setShowHijri(false)} aria-label="Close">✕</button>
+            </div>
+            <HijriCalendar
+              offsetDays={settings.hijriOffset}
+              onOffsetChange={value => updateSetting('hijriOffset', value)}
+              t={t}
+            />
+          </div>
+        </div>
+      )}
+
       {showSettings && (
         <div className="settings-overlay" onClick={() => setShowSettings(false)}>
           <div className="settings-panel" onClick={e => e.stopPropagation()}>
@@ -974,20 +1049,23 @@ export default function App() {
         {showSearch && (
         <div className="search-section">
           <div className="search-row">
-            <div className="search-input-wrap">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <input
-                ref={searchInputRef}
-                type="text"
-                className="search-input"
-                placeholder={t('search.placeholder')}
-                value={cityInput}
-                onChange={e => setCityInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              />
-            </div>
+            <CitySearchInput
+              value={cityInput}
+              onChange={setCityInput}
+              onSubmit={handleSearch}
+              onPickSuggestion={(s) => {
+                setCityInput(`${s.city}, ${s.country}`);
+                setShowSearch(false);
+                performSearch({
+                  type: 'coords',
+                  lat: s.lat,
+                  lng: s.lng,
+                  label: `${s.city}${s.region ? ', ' + s.region : ''}, ${s.country}`,
+                });
+              }}
+              placeholder={t('search.placeholder')}
+              inputRef={searchInputRef}
+            />
             <button className="btn btn-search" onClick={handleSearch}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -1026,16 +1104,59 @@ export default function App() {
 
         {!loading && !error && data && (
           <>
-            {/* Location banner */}
-            <div className="location-banner">
-              <div className="city-row">
-                <svg className="loc-pin" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-                </svg>
-                <div className="city-name">{cityName}</div>
+            {/* Location banner + inline actions */}
+            <div className="location-banner-row">
+              <div className="location-banner">
+                <div className="city-row">
+                  <svg className="loc-pin" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                  </svg>
+                  <div className="city-name">{cityName}</div>
+                </div>
+                <div className="date-info">{formatGregorianDate(data.date, lang)}</div>
+                {displayHijri && (
+                  <button
+                    type="button"
+                    className="hijri hijri-chip"
+                    onClick={() => setShowHijri(true)}
+                    aria-label={t('hijri.open')}
+                  >
+                    {formatHijriDate(displayHijri, lang)}
+                    <span className="hijri-chip-caret" aria-hidden="true">›</span>
+                  </button>
+                )}
               </div>
-              <div className="date-info">{formatGregorianDate(data.date, lang)}</div>
-              {displayHijri && <div className="hijri">{formatHijriDate(displayHijri, lang)}</div>}
+              <div className="header-inline-actions">
+                <button
+                  className={`icon-action ${showSearch ? 'active' : ''}`}
+                  onClick={() => setShowSearch(s => !s)}
+                  aria-label={t('search.title')}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                </button>
+                <button
+                  className="icon-action"
+                  onClick={handleLocate}
+                  aria-label={t('search.useLocation')}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z"/>
+                    <circle cx="12" cy="9" r="2.5"/>
+                  </svg>
+                </button>
+                <button
+                  className="icon-action"
+                  onClick={() => setShowSettings(true)}
+                  aria-label={t('settings.title')}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {/* Sun strip */}
@@ -1058,13 +1179,14 @@ export default function App() {
 
             {/* Tabs */}
             <div className="tabs">
-              {['today', 'weekly', 'qibla', 'mosques', 'hijri', 'tasbih'].map(tab => (
+              {['today', 'weekly', 'qibla', 'mosques', 'tasbih'].map(tab => (
                 <button
                   key={tab}
                   className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
                   onClick={() => handleTabChange(tab)}
                 >
-                  {t(`tab.${tab}`)}
+                  <TabIcon name={tab} />
+                  <span className="tab-label">{t(`tab.${tab}`)}</span>
                 </button>
               ))}
             </div>
@@ -1199,15 +1321,6 @@ export default function App() {
               />
             )}
 
-            {/* Hijri tab */}
-            {activeTab === 'hijri' && (
-              <HijriCalendar
-                offsetDays={settings.hijriOffset}
-                onOffsetChange={value => updateSetting('hijriOffset', value)}
-                t={t}
-              />
-            )}
-
             {/* Tasbih tab */}
             {activeTab === 'tasbih' && (
               <Tasbih
@@ -1220,7 +1333,7 @@ export default function App() {
 
         <div className="footer">
           {t('footer.poweredBy')} <a href="https://aladhan.com/prayer-times-api" target="_blank" rel="noreferrer">Aladhan API</a> ·
-          {' '}{t('footer.audioBy')} <a href="https://www.islamcan.com/audio/adhan" target="_blank" rel="noreferrer">islamcan.com</a>
+          {' '}{t('footer.audioBy')} <a href="https://archive.org/details/adhan.recordings.from.doha.qatar" target="_blank" rel="noreferrer">archive.org (Public Domain)</a>
         </div>
       </div>
     </div>

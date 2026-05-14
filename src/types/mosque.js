@@ -37,7 +37,9 @@
 export const RADIUS_OPTIONS_MILES = [1, 3, 5, 10];
 export const DEFAULT_RADIUS_MILES = 5;
 export const MILES_TO_METERS = 1609.344;
-export const PROVIDER_TIMEOUT_MS = 12000;
+export const PROVIDER_TIMEOUT_MS = 15000;        // total budget per provider
+export const PER_ENDPOINT_TIMEOUT_MS = 12000;    // per Overpass endpoint attempt (parallel race)
+export const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 
 export const MOSQUE_SOURCES = Object.freeze({
   OSM: 'osm',

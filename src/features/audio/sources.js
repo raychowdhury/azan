@@ -10,7 +10,22 @@
 //   Beep        — single short tone, bundled (beep.wav).
 //   Silent      — no audio. Notifications still fire if enabled.
 
+const DOHA_FILES = {
+  Fajr:    '/adhan/01_Fajr.mp3',
+  Dhuhr:   '/adhan/02_Dhuhr.mp3',
+  Asr:     '/adhan/03_Asr.mp3',
+  Maghrib: '/adhan/04_Maghrib.mp3',
+  Isha:    '/adhan/05_Isha.mp3',
+};
+
 export const ADHAN_SOURCES = [
+  {
+    id: 'doha',
+    label: 'Doha Adhan',
+    description: 'Full Adhan recorded in Doha, Qatar. Public Domain (archive.org).',
+    urlFor: (prayer) => DOHA_FILES[prayer] || DOHA_FILES.Dhuhr,
+    verified: true,
+  },
   {
     id: 'adhan_chime',
     label: 'Adhan Chime',
@@ -37,21 +52,21 @@ export const ADHAN_SOURCES = [
   },
 ];
 
-// Default to the bundled adhan chime.
-export const DEFAULT_ADHAN_SOURCE = 'adhan_chime';
+// Default to the full Doha Adhan (public domain).
+export const DEFAULT_ADHAN_SOURCE = 'doha';
 
-// Map legacy ids saved by previous builds onto the new bundled ids.
+// Map legacy ids saved by previous builds onto current sources.
 const LEGACY_ID_MAP = {
-  mishary:  'adhan_chime',
-  makkah:   'adhan_chime',
-  madinah:  'adhan_chime',
-  egyptian: 'adhan_chime',
-  turkish:  'adhan_chime',
-  adhan1:   'adhan_chime',
-  adhan2:   'adhan_chime',
-  adhan3:   'adhan_chime',
-  adhan4:   'adhan_chime',
-  adhan5:   'adhan_chime',
+  mishary:  'doha',
+  makkah:   'doha',
+  madinah:  'doha',
+  egyptian: 'doha',
+  turkish:  'doha',
+  adhan1:   'doha',
+  adhan2:   'doha',
+  adhan3:   'doha',
+  adhan4:   'doha',
+  adhan5:   'doha',
 };
 
 export function normalizeAdhanSourceId(id) {
@@ -66,6 +81,5 @@ export function getAdhanSource(id) {
 
 export function adhanUrlFor(sourceId, prayerKey) {
   const source = getAdhanSource(sourceId);
-  if (source.builtin) return null;
   return source.urlFor(prayerKey);
 }

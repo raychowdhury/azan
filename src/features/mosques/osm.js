@@ -1,49 +1,73 @@
 import { haversineMiles } from '../../utils/distance';
-import { MILES_TO_METERS, PROVIDER_TIMEOUT_MS, MOSQUE_SOURCES } from '../../types/mosque';
+import {
+  MILES_TO_METERS,
+  PROVIDER_TIMEOUT_MS,
+  PER_ENDPOINT_TIMEOUT_MS,
+  MOSQUE_SOURCES,
+} from '../../types/mosque';
 
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.openstreetmap.ru/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
 ];
 
-function buildQuery(lat, lng, radiusMeters) {
-  // node/way/relation around point: amenity=place_of_worship + religion=muslim,
-  // plus building=mosque variants. `out center` gives geometry for ways/relations.
-  return `[out:json][timeout:25];
+function buildQuery(lat, lng, radiusMeters, serverTimeoutSec) {
+  // `nwr` matches node+way+relation in one pass. `out center qt` returns
+  // centroid for ways and sorts by quadtile (cheaper than default sort).
+  // Server timeout scales with radius so larger searches don't get cut off.
+  return `[out:json][timeout:${serverTimeoutSec}];
 (
-  node["amenity"="place_of_worship"]["religion"="muslim"](around:${radiusMeters},${lat},${lng});
-  way["amenity"="place_of_worship"]["religion"="muslim"](around:${radiusMeters},${lat},${lng});
-  relation["amenity"="place_of_worship"]["religion"="muslim"](around:${radiusMeters},${lat},${lng});
-  node["building"="mosque"](around:${radiusMeters},${lat},${lng});
-  way["building"="mosque"](around:${radiusMeters},${lat},${lng});
+  nwr["amenity"="place_of_worship"]["religion"="muslim"](around:${radiusMeters},${lat},${lng});
+  nwr["building"="mosque"](around:${radiusMeters},${lat},${lng});
 );
-out center tags;`;
+out center qt tags;`;
 }
 
-function fetchOverpass(query, signal) {
+// Race all endpoints in parallel. First success wins; the rest get aborted.
+// If every endpoint fails, throw an aggregated error.
+async function fetchOverpass(query, outerSignal, perEndpointMs = PER_ENDPOINT_TIMEOUT_MS) {
   const body = new URLSearchParams({ data: query }).toString();
-  return (async () => {
-    let lastErr;
-    for (const url of OVERPASS_ENDPOINTS) {
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body,
-          signal,
-        });
-        if (!res.ok) {
-          lastErr = new Error(`Overpass HTTP ${res.status}`);
-          continue;
-        }
-        return await res.json();
-      } catch (e) {
-        if (e.name === 'AbortError') throw e;
-        lastErr = e;
-      }
+  const cancellers = [];
+  const attempts = OVERPASS_ENDPOINTS.map((url) => {
+    const ctrl = new AbortController();
+    cancellers.push(ctrl);
+    const linked = outerSignal ? linkSignal(outerSignal, ctrl.signal) : ctrl.signal;
+    const timer = setTimeout(() => ctrl.abort(), perEndpointMs);
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+      signal: linked,
+    })
+      .then(async (res) => {
+        clearTimeout(timer);
+        if (!res.ok) throw new Error(`HTTP ${res.status} (${url})`);
+        return res.json();
+      })
+      .catch((e) => {
+        clearTimeout(timer);
+        throw new Error(`${url}: ${e.message || e.name}`);
+      });
+  });
+
+  try {
+    const winner = await Promise.any(attempts);
+    return winner;
+  } catch (e) {
+    // AggregateError when every endpoint rejected.
+    if (outerSignal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    const msgs = (e.errors || [e]).map((x) => x?.message || String(x)).join(' | ');
+    throw new Error(`All Overpass endpoints failed: ${msgs}`);
+  } finally {
+    // Cancel any still-running attempts (winner already settled, but slow
+    // losers can still hold sockets — cut them loose).
+    for (const c of cancellers) {
+      if (!c.signal.aborted) c.abort();
     }
-    throw lastErr || new Error('All Overpass endpoints failed');
-  })();
+  }
 }
 
 function composeAddress(tags) {
@@ -81,13 +105,26 @@ function normalizeElement(el, origin) {
 export async function searchOsmMosques({ origin, radiusMiles, signal }) {
   if (!origin) return [];
   const radiusMeters = Math.round(radiusMiles * MILES_TO_METERS);
+  // Scale budgets with radius. Big radius = more elements + longer server work.
+  const serverTimeoutSec = Math.min(60, Math.max(15, Math.round(radiusMiles * 4)));
+  const perEndpointMs = Math.min(45000, Math.max(PER_ENDPOINT_TIMEOUT_MS, (serverTimeoutSec + 3) * 1000));
+  const overallMs = Math.min(60000, Math.max(PROVIDER_TIMEOUT_MS, perEndpointMs + 5000));
+
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), PROVIDER_TIMEOUT_MS);
-  const linkedSignal = signal
-    ? mergeSignals(signal, ctrl.signal)
-    : ctrl.signal;
+  const timer = setTimeout(() => ctrl.abort(), overallMs);
+  const linkedSignal = signal ? linkSignal(signal, ctrl.signal) : ctrl.signal;
   try {
-    const data = await fetchOverpass(buildQuery(origin.lat, origin.lng, radiusMeters), linkedSignal);
+    const data = await fetchOverpass(
+      buildQuery(origin.lat, origin.lng, radiusMeters, serverTimeoutSec),
+      linkedSignal,
+      perEndpointMs,
+    );
+    // Overpass returns 200 OK with a `remark` field when it hits its own
+    // runtime/memory limits. Treat that as an error so we can retry instead of
+    // silently rendering "no mosques found".
+    if (data?.remark && (!data.elements || data.elements.length === 0)) {
+      throw new Error(`Overpass: ${data.remark}`);
+    }
     const seen = new Set();
     const results = [];
     for (const el of data.elements || []) {
@@ -103,7 +140,7 @@ export async function searchOsmMosques({ origin, radiusMiles, signal }) {
   }
 }
 
-function mergeSignals(a, b) {
+function linkSignal(a, b) {
   if (a.aborted) return a;
   if (b.aborted) return b;
   const ctrl = new AbortController();

@@ -212,7 +212,7 @@ html[data-sky="isha"]    { --sky-grad: linear-gradient(160deg, #1a2244 0%, #2a34
   z-index: 2;
   max-width: 800px;
   margin: 0 auto;
-  padding: calc(36px + env(safe-area-inset-top, 0px)) 20px calc(112px + env(safe-area-inset-bottom, 0px));
+  padding: calc(36px + env(safe-area-inset-top, 0px)) 20px calc(140px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Hide old Azan-branded header chrome — design uses inline location row only */
@@ -502,6 +502,35 @@ html[data-sky="isha"]    { --sky-grad: linear-gradient(160deg, #1a2244 0%, #2a34
   color: var(--text-muted);
 }
 
+.hijri-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
+  border-radius: 999px;
+  padding: 4px 10px 4px 12px;
+  margin-top: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.hijri-chip:hover { background: rgba(255,255,255,0.08); }
+.hijri-chip:active { transform: scale(0.97); }
+.hijri-chip-caret {
+  font-size: 0.95rem;
+  line-height: 1;
+  color: var(--text-muted, rgba(255,255,255,0.4));
+}
+[dir="rtl"] .hijri-chip-caret { transform: scaleX(-1); }
+
+.hijri-panel { max-width: 520px; }
+
 /* Section eyebrow above grouped lists */
 .section-eyebrow {
   font-size: 0.7rem;
@@ -592,12 +621,12 @@ html[data-sky="isha"]    { --sky-grad: linear-gradient(160deg, #1a2244 0%, #2a34
 
 .tab-btn {
   flex: 1 1 0;
-  min-width: 60px;
+  min-width: 0;
   padding: 8px 4px 6px;
   border: none;
   border-radius: 14px;
   font-family: 'DM Sans', sans-serif;
-  font-size: 0.62rem;
+  font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
   background: transparent;
@@ -608,6 +637,9 @@ html[data-sky="isha"]    { --sky-grad: linear-gradient(160deg, #1a2244 0%, #2a34
   flex-direction: column;
   align-items: center;
   gap: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tab-label { display: block; }
 

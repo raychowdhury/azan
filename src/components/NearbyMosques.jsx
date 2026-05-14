@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { searchNearbyMosques } from '../features/mosques/providers';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { searchNearbyMosques, clearMosqueCache } from '../features/mosques/providers';
 import { DEFAULT_RADIUS_MILES, RADIUS_OPTIONS_MILES } from '../types/mosque';
 import { formatMiles, haversineMiles } from '../utils/distance';
 import { directionsUrl, openUrl, viewOnMapUrl } from '../features/mosques/maps';
@@ -44,23 +44,47 @@ export default function NearbyMosques({ userCoords, onLocate }) {
     }
   }, [userCoords]);
 
-  const performSearch = useCallback(async (point, miles) => {
+  const reqIdRef = useRef(0);
+  const abortRef = useRef(null);
+
+  const performSearch = useCallback(async (point, miles, { bypassCache = false } = {}) => {
     if (!point) return;
+    if (abortRef.current) abortRef.current.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    const myId = ++reqIdRef.current;
     setLoading(true);
     setError(null);
+    if (bypassCache) clearMosqueCache();
     try {
-      const list = await searchNearbyMosques({ origin: point, radiusMiles: miles });
-      setResults(list);
+      const { mosques, errors } = await searchNearbyMosques({
+        origin: point,
+        radiusMiles: miles,
+        signal: ctrl.signal,
+      });
+      if (myId !== reqIdRef.current) return;
+      if (errors?.length) console.warn('mosque providers had partial errors:', errors);
+      setResults(mosques);
     } catch (e) {
-      setError(e?.message || t('mosques.errorGeneric'));
+      if (e?.name === 'AbortError') return;
+      if (myId !== reqIdRef.current) return;
+      console.warn('mosque search failed:', e?.message);
+      // Show short, friendly message. Detailed string is in console for diag.
+      const friendly = miles >= 10
+        ? t('mosques.errorBusy')
+        : t('mosques.errorGeneric');
+      setError(friendly);
       setResults([]);
     } finally {
-      setLoading(false);
+      if (myId === reqIdRef.current) setLoading(false);
     }
   }, [t]);
 
   useEffect(() => {
     if (origin) performSearch(origin, radius);
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+    };
   }, [origin, radius, performSearch]);
 
   function requestLocation() {
@@ -164,7 +188,7 @@ export default function NearbyMosques({ userCoords, onLocate }) {
           <button
             type="button"
             className="btn-secondary"
-            onClick={() => origin ? performSearch(origin, radius) : requestLocation()}
+            onClick={() => origin ? performSearch(origin, radius, { bypassCache: true }) : requestLocation()}
             disabled={loading}
           >
             {loading ? t('mosques.loading') : t('mosques.refresh')}
@@ -201,8 +225,16 @@ export default function NearbyMosques({ userCoords, onLocate }) {
         <EmptyState
           title={t('mosques.errorTitle')}
           text={error}
-          actionLabel={showRetry ? t('mosques.tryAgain') : t('mosques.refresh')}
-          onAction={() => (showRetry ? requestLocation() : performSearch(origin, radius))}
+          actionLabel={radius >= 10 ? t('mosques.tryFiveMi') : (showRetry ? t('mosques.tryAgain') : t('mosques.refresh'))}
+          onAction={() => {
+            if (radius >= 10) {
+              setRadius(5);
+            } else if (showRetry) {
+              requestLocation();
+            } else {
+              performSearch(origin, radius, { bypassCache: true });
+            }
+          }}
         />
       )}
 
@@ -211,50 +243,59 @@ export default function NearbyMosques({ userCoords, onLocate }) {
           title={t('mosques.emptyTitle')}
           text={t('mosques.emptyText')}
           actionLabel={t('mosques.refresh')}
-          onAction={() => performSearch(origin, radius)}
+          onAction={() => performSearch(origin, radius, { bypassCache: true })}
         />
       )}
 
       {origin && !loading && results.length > 0 && (
         <ul className="mosques-list" aria-label={t('mosques.title')}>
-          {results.map((m) => (
-            <li key={m.id}>
-              <MosqueCard
-                mosque={m}
-                favorite={favorites.some((f) => f.id === m.id)}
-                isHome={homeId === m.id}
-                onToggleFavorite={handleToggleFavorite}
-                onSetHome={handleSetHome}
-                onSubmitDetails={isVerifiedDbEnabled()
-                  ? () => { setSubmitFor(m); setShowSubmit(true); }
-                  : null}
-                t={t}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {favorites.length > 0 && (
-        <section className="mosques-saved">
-          <div className="section-eyebrow">{t('mosques.saved')}</div>
-          <ul className="mosques-list">
-            {savedWithDistance.map((m) => (
-              <li key={`fav-${m.id}`}>
+          {results
+            .filter((m) => m.id !== homeId)
+            .map((m) => (
+              <li key={m.id}>
                 <MosqueCard
                   mosque={m}
-                  favorite
-                  isHome={homeId === m.id}
+                  favorite={favorites.some((f) => f.id === m.id)}
+                  isHome={false}
                   onToggleFavorite={handleToggleFavorite}
                   onSetHome={handleSetHome}
+                  onSubmitDetails={isVerifiedDbEnabled()
+                    ? () => { setSubmitFor(m); setShowSubmit(true); }
+                    : null}
                   t={t}
-                  compact
                 />
               </li>
             ))}
-          </ul>
-        </section>
+        </ul>
       )}
+
+      {savedWithDistance.length > 0 && (() => {
+        const resultIds = new Set(results.map((m) => m.id));
+        const savedOnly = savedWithDistance.filter(
+          (m) => m.id !== homeId && !resultIds.has(m.id),
+        );
+        if (savedOnly.length === 0) return null;
+        return (
+          <section className="mosques-saved">
+            <div className="section-eyebrow">{t('mosques.saved')}</div>
+            <ul className="mosques-list">
+              {savedOnly.map((m) => (
+                <li key={`fav-${m.id}`}>
+                  <MosqueCard
+                    mosque={m}
+                    favorite
+                    isHome={false}
+                    onToggleFavorite={handleToggleFavorite}
+                    onSetHome={handleSetHome}
+                    t={t}
+                    compact
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })()}
 
       {showSubmit && (
         <MosqueSubmitForm
