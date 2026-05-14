@@ -1,6 +1,6 @@
 # Privacy Policy for Azan Times
 
-Effective Date: May 3, 2026
+Effective Date: May 12, 2026
 
 Azan Times respects your privacy. This app is designed to provide Islamic prayer times, Qibla direction, Tasbih counter, Azan audio, and prayer reminders.
 
@@ -8,16 +8,18 @@ Azan Times respects your privacy. This app is designed to provide Islamic prayer
 
 Azan Times may use your device location to calculate accurate prayer times, show your city, calculate the Qibla direction, and estimate the distance to Makkah.
 
-Location access is used only for app functionality. We do not sell, rent, or share your personal information.
+Location access is used only for prayer time, approximate place name, and Qibla functionality. We do not sell, rent, or share your personal information for advertising or tracking.
 
 ## Third-Party Services
 
 Azan Times may access third-party services to provide app features, including:
 
 - Aladhan API for prayer times and Islamic calendar data
-- A third-party Adhan audio CDN, currently islamcan.com, for optional Adhan audio playback
+- A third-party Adhan audio CDN, currently islamcan.com, for optional streaming Adhan playback when a streaming Adhan source is selected
 
-These services may process basic technical request information such as IP address, device/browser information, or network metadata according to their own privacy practices. Azan Times does not create accounts, does not show ads, does not include analytics SDKs, and does not track users across services.
+These services may process basic technical request information such as IP address, device/browser information, searched city, coordinates needed to calculate prayer times, or network metadata according to their own privacy practices. Azan Times does not create accounts, does not show ads, does not include advertising SDKs, and does not track users across services.
+
+Azan Times may use privacy-limited crash and diagnostic reporting to understand app failures, notification scheduling failures, location permission failures, Qibla orientation permission failures, and audio playback failures. Diagnostics are used only to improve reliability and are not used for advertising or cross-app tracking.
 
 ## Notifications
 
@@ -29,7 +31,7 @@ Azan Times may use device orientation data to help point the Qibla compass towar
 
 ## Data Storage
 
-Azan Times may store app preferences locally on your device, such as theme, time format, calculation method, notification settings, and Azan audio preference.
+Azan Times may store app preferences locally on your device, such as theme, time format, calculation method, notification settings, last selected location, Tasbih sessions, Hijri offset, and Azan audio preference.
 
 ## Children's Privacy
 

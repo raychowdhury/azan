@@ -10,7 +10,6 @@ import {
   buildComputedDays,
   computePrayerTimes,
   getCalculationMethodDetails,
-  getCalculationMethodOptionLabel,
   madhabToApiSchool,
   methodToApiId,
   normalizePrayerSettings,
@@ -34,6 +33,7 @@ import Tasbih from './components/Tasbih';
 import WeeklyView from './components/WeeklyView';
 import { toHijri } from './features/hijri/converter';
 import { useT } from './i18n';
+import { reportError, reportEvent } from './utils/monitoring';
 const isNative = Capacitor.isNativePlatform();
 const ReverseGeocoder = registerPlugin('ReverseGeocoder');
 const NOTIFICATION_ID_BASE = 4200;
@@ -62,6 +62,35 @@ function searchLabel(params) {
   if (params.label) return params.label;
   if (params.type === 'city') return [params.city, params.country].filter(Boolean).join(', ');
   return 'Current Location';
+}
+
+function prayerLabel(t, prayerKey) {
+  return t(`prayer.${prayerKey}`);
+}
+
+function localizedMethodValue(t, value) {
+  if (value === 'Method default') return t('settings.calculationMethod.methodDefault');
+  const interval = String(value).match(/^(\d+) min after Maghrib$/);
+  if (interval) return t('settings.calculationMethod.minutesAfterMaghrib', { minutes: interval[1] });
+  return value;
+}
+
+function calculationMethodOptionLabel(t, methodId) {
+  const details = getCalculationMethodDetails(methodId);
+  return t('settings.calculationMethod.option', {
+    label: t(`method.${details.id}.label`),
+    authority: t(`method.${details.id}.authority`),
+    fajr: localizedMethodValue(t, details.fajr),
+    isha: localizedMethodValue(t, details.isha),
+  });
+}
+
+function calculationMethodSummary(t, details) {
+  return t('settings.calculationMethod.summary', {
+    authority: t(`method.${details.id}.authority`),
+    fajr: localizedMethodValue(t, details.fajr),
+    isha: localizedMethodValue(t, details.isha),
+  });
 }
 
 function extractCoords(result, fallback) {
@@ -228,7 +257,8 @@ export default function App() {
     if (isNative) {
       if (settings.notifEnabled) {
         const notificationCoords = lastSearch?.type === 'coords' ? userCoords : null;
-        scheduleNativeNotifications(data.timings, settings.notifications, notificationCoords).catch(() => {});
+        scheduleNativeNotifications(data.timings, settings.notifications, notificationCoords)
+          .catch(error => reportError(error, { feature: 'notification_schedule_effect' }));
       } else {
         LocalNotifications.getPending()
           .then(pending => pending.notifications
@@ -237,7 +267,7 @@ export default function App() {
           .then(notifications => {
             if (notifications.length) return LocalNotifications.cancel({ notifications });
           })
-          .catch(() => {});
+          .catch(error => reportError(error, { feature: 'notification_cancel_disabled' }));
       }
     }
 
@@ -256,13 +286,13 @@ export default function App() {
         const ahead = msUntil - cfg.preReminderMinutes * 60 * 1000;
         if (ahead > 0) {
           azanTimers.current.push(
-            setTimeout(() => fireNotification(prayer.name, cfg.preReminderMinutes), ahead)
+            setTimeout(() => fireNotification(prayerLabel(t, prayer.key), cfg.preReminderMinutes), ahead)
           );
         }
       }
     });
     return () => azanTimers.current.forEach(clearTimeout);
-  }, [data, settings.azanEnabled, settings.notifEnabled, settings.notifications, userCoords, lastSearch]);
+  }, [data, settings.azanEnabled, settings.notifEnabled, settings.notifications, userCoords, lastSearch, t]);
 
   function stopAudio() {
     if (audioRef.current) {
@@ -277,9 +307,13 @@ export default function App() {
       stopAudio();
       const audio = new Audio(url);
       audio.volume = 1;
-      audio.play().catch(() => {});
+      audio.play()
+        .then(() => reportEvent('audio_playback_started', { source: url.startsWith('/') ? 'bundled' : 'streaming' }))
+        .catch(error => reportError(error, { feature: 'audio_playback', source: url.startsWith('/') ? 'bundled' : 'streaming' }));
       audioRef.current = audio;
-    } catch {}
+    } catch (error) {
+      reportError(error, { feature: 'audio_playback_create' });
+    }
   }
 
   function playAzan(prayerKey) {
@@ -303,48 +337,62 @@ export default function App() {
     if (isNative) {
       try {
         const status = await LocalNotifications.checkPermissions();
+        reportEvent('notification_permission_checked', { platform: 'native', status: status.display });
         if (status.display !== 'granted') {
           const req = await LocalNotifications.requestPermissions();
+          reportEvent('notification_permission_requested', { platform: 'native', status: req.display });
           if (req.display !== 'granted') return;
         }
         await LocalNotifications.schedule({
           notifications: [{
             id: NOTIFICATION_ID_BASE + NOTIFICATION_ID_SPAN - 1,
-            title: 'Azan Times — test',
-            body: 'Notifications are working. ✅',
+            title: t('notification.test.title'),
+            body: t('notification.test.body'),
             schedule: { at: new Date(Date.now() + 1500) },
           }],
         });
-      } catch {}
+        reportEvent('notification_test_scheduled', { platform: 'native' });
+      } catch (error) {
+        reportError(error, { feature: 'notification_test', platform: 'native' });
+      }
       return;
     }
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') {
       const perm = await Notification.requestPermission();
+      reportEvent('notification_permission_requested', { platform: 'web', status: perm });
       if (perm !== 'granted') return;
     }
-    new Notification('🕌 Azan Times — test', {
-      body: 'Notifications are working. ✅',
+    new Notification(t('notification.test.title'), {
+      body: t('notification.test.body'),
     });
+    reportEvent('notification_test_scheduled', { platform: 'web' });
   }
 
   function fireNotification(prayerName, minutes) {
     if (!('Notification' in window)) return;
     if (Notification.permission === 'granted') {
       new Notification('🕌 Azan Times', {
-        body: `${prayerName} prayer starts in ${minutes} minute${minutes !== 1 ? 's' : ''}.`,
+        body: t('notification.reminder.body', { prayer: prayerName, minutes }),
       });
+      reportEvent('notification_web_fired', { prayerName, minutes });
     }
   }
 
   async function requestNotifPermission() {
     if (isNative) {
-      const status = await LocalNotifications.requestPermissions();
-      if (status.display === 'granted') updateSetting('notifEnabled', true);
+      try {
+        const status = await LocalNotifications.requestPermissions();
+        reportEvent('notification_permission_requested', { platform: 'native', status: status.display });
+        if (status.display === 'granted') updateSetting('notifEnabled', true);
+      } catch (error) {
+        reportError(error, { feature: 'notification_permission', platform: 'native' });
+      }
       return;
     }
     if ('Notification' in window) {
       const perm = await Notification.requestPermission();
+      reportEvent('notification_permission_requested', { platform: 'web', status: perm });
       if (perm === 'granted') updateSetting('notifEnabled', true);
     }
   }
@@ -416,24 +464,30 @@ export default function App() {
       if (cached?.result) {
         setData(cached.result);
         if (cached.params) setLastSearch(cached.params);
-        setError(`Offline — showing cached times from ${new Date(cached.ts).toLocaleString()}`);
+        setError(t('error.offlineCached', { date: new Date(cached.ts).toLocaleString() }));
       } else {
         setError(e.message);
       }
+      reportError(e, { feature: 'prayer_search', type: params?.type });
     } finally {
       setLoading(false);
     }
-  }, [settings.prayer]);
+  }, [settings.prayer, t]);
 
   async function scheduleNativeNotifications(timings, notificationSettings, coords) {
     if (!isNative) return;
 
-    const pending = await LocalNotifications.getPending();
-    const scheduledPrayerNotifications = pending.notifications
-      .filter(isScheduledPrayerNotification)
-      .map(n => ({ id: n.id }));
-    if (scheduledPrayerNotifications.length) {
-      await LocalNotifications.cancel({ notifications: scheduledPrayerNotifications });
+    try {
+      const pending = await LocalNotifications.getPending();
+      const scheduledPrayerNotifications = pending.notifications
+        .filter(isScheduledPrayerNotification)
+        .map(n => ({ id: n.id }));
+      if (scheduledPrayerNotifications.length) {
+        await LocalNotifications.cancel({ notifications: scheduledPrayerNotifications });
+      }
+    } catch (error) {
+      reportError(error, { feature: 'notification_cancel' });
+      throw error;
     }
 
     const now = new Date();
@@ -463,8 +517,8 @@ export default function App() {
           if (notifyAt > now) {
             notifications.push({
               id: NOTIFICATION_ID_BASE + dayOffset * 100 + 50 + index,
-              title: 'Prayer reminder',
-              body: `${prayer.name} prayer starts in ${preMinutes} minute${preMinutes !== 1 ? 's' : ''}.`,
+              title: t('notification.reminder.title'),
+              body: t('notification.reminder.body', { prayer: prayerLabel(t, prayer.key), minutes: preMinutes }),
               schedule: { at: notifyAt },
               sound: cfg.vibrateOnly ? undefined : 'beep.wav',
             });
@@ -474,8 +528,8 @@ export default function App() {
         if (prayerTime > now) {
           notifications.push({
             id: NOTIFICATION_ID_BASE + dayOffset * 100 + index,
-            title: prayer.name,
-            body: `It's time for ${prayer.name} prayer.`,
+            title: prayerLabel(t, prayer.key),
+            body: t('notification.time.body', { prayer: prayerLabel(t, prayer.key) }),
             schedule: { at: prayerTime },
             sound: soundFileForNotification(cfg.sound, cfg.vibrateOnly),
           });
@@ -484,7 +538,13 @@ export default function App() {
     }
 
     if (notifications.length) {
-      await LocalNotifications.schedule({ notifications });
+      try {
+        await LocalNotifications.schedule({ notifications });
+        reportEvent('notification_schedule_success', { count: notifications.length, days });
+      } catch (error) {
+        reportError(error, { feature: 'notification_schedule', count: notifications.length, days });
+        throw error;
+      }
     }
   }
 
@@ -517,13 +577,20 @@ export default function App() {
   }
 
   function handleLocate() {
-    if (!navigator.geolocation) { setError('Geolocation not supported.'); return; }
+    if (!navigator.geolocation) { setError(t('error.geolocationUnsupported')); return; }
     setLoading(true);
     setError(null);
     setShowSearch(false);
     navigator.geolocation.getCurrentPosition(
-      pos => performSearch({ type: 'coords', lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => { setLoading(false); setError('Location access denied. Search for a city instead.'); },
+      pos => {
+        reportEvent('location_permission_success');
+        performSearch({ type: 'coords', lat: pos.coords.latitude, lng: pos.coords.longitude });
+      },
+      error => {
+        setLoading(false);
+        setError(t('error.locationDenied'));
+        reportError(error, { feature: 'location_permission' });
+      },
       { enableHighAccuracy: true, maximumAge: 5 * 60 * 1000, timeout: 10000 }
     );
   }
@@ -540,7 +607,7 @@ export default function App() {
   const cityName       = data && lastSearch
     ? searchLabel(lastSearch)
     : data
-      ? 'Current Location'
+      ? t('search.useLocation')
       : '';
   const selectedMethodDetails = getCalculationMethodDetails(settings.prayer.methodId);
   const displayHijri = data
@@ -644,7 +711,7 @@ export default function App() {
                     >
                       {ADHAN_SOURCES.map(source => (
                         <option key={source.id} value={source.id}>
-                          {source.label}{source.unverified ? ' (preview)' : ''}
+                          {t(`adhanSource.${source.id}.label`)}{source.unverified ? ` (${t('label.preview')})` : ''}
                         </option>
                       ))}
                     </select>
@@ -658,9 +725,9 @@ export default function App() {
                     </button>
                   </div>
                   <p className="setting-hint">
-                    {getAdhanSource(settings.azanSource).description}
+                    {t(`adhanSource.${settings.azanSource}.description`)}
                     {getAdhanSource(settings.azanSource).unverified
-                      ? ' Source URL needs verification before release.'
+                      ? ` ${t('settings.azanAudio.unverified')}`
                       : ''}
                   </p>
                 </div>
@@ -709,7 +776,7 @@ export default function App() {
                     }}
                   >
                     {[0, 5, 10, 15, 30].map(n => (
-                      <option key={n} value={n}>{n} min before</option>
+                      <option key={n} value={n}>{t('settings.notifications.minutesBefore', { minutes: n })}</option>
                     ))}
                   </select>
                 </div>
@@ -731,7 +798,7 @@ export default function App() {
                       <div key={prayer.key} className="notif-prayer-card">
                         <div className="notif-prayer-top">
                           <div>
-                            <div className="notif-prayer-name">{prayer.name}</div>
+                            <div className="notif-prayer-name">{prayerLabel(t, prayer.key)}</div>
                             <div className="setting-hint">{prayer.arabic}</div>
                           </div>
                           <label className="switch">
@@ -747,26 +814,26 @@ export default function App() {
                         {cfg.enabled && (
                           <div className="notif-prayer-controls">
                             <label>
-                              <span>Sound</span>
+                              <span>{t('settings.notifications.sound')}</span>
                               <select
                                 className="method-select small"
                                 value={cfg.sound}
                                 onChange={e => updatePrayerNotification(prayer.key, { sound: e.target.value })}
                               >
                                 {NOTIFICATION_SOUNDS.map(sound => (
-                                  <option key={sound.id} value={sound.id}>{sound.label}</option>
+                                  <option key={sound.id} value={sound.id}>{t(`notificationSound.${sound.id}`)}</option>
                                 ))}
                               </select>
                             </label>
                             <label>
-                              <span>Reminder</span>
+                              <span>{t('settings.notifications.reminder')}</span>
                               <select
                                 className="method-select small"
                                 value={cfg.preReminderMinutes}
                                 onChange={e => updatePrayerNotification(prayer.key, { preReminderMinutes: Number(e.target.value) })}
                               >
                                 {[0, 5, 10, 15, 30].map(n => (
-                                  <option key={n} value={n}>{n === 0 ? 'Off' : `${n} min`}</option>
+                                  <option key={n} value={n}>{n === 0 ? t('label.off') : t('settings.notifications.minutes', { minutes: n })}</option>
                                 ))}
                               </select>
                             </label>
@@ -776,7 +843,7 @@ export default function App() {
                                 checked={cfg.vibrateOnly}
                                 onChange={e => updatePrayerNotification(prayer.key, { vibrateOnly: e.target.checked })}
                               />
-                              <span>Vibrate only</span>
+                              <span>{t('settings.notifications.vibrateOnly')}</span>
                             </label>
                           </div>
                         )}
@@ -784,7 +851,7 @@ export default function App() {
                     );
                   })}
                 </div>
-                <p className="setting-hint">iOS notification sounds use bundled files under 30 seconds. Full Adhan still plays only after the app opens.</p>
+                <p className="setting-hint">{t('settings.notifications.iosSoundLimit')}</p>
               </div>
             )}
 
@@ -796,11 +863,11 @@ export default function App() {
                 onChange={e => updatePrayerSetting('methodId', e.target.value)}
               >
                 {METHOD_OPTIONS.map(m => (
-                  <option key={m.id} value={m.id}>{getCalculationMethodOptionLabel(m.id)}</option>
+                  <option key={m.id} value={m.id}>{calculationMethodOptionLabel(t, m.id)}</option>
                 ))}
               </select>
               <p className="setting-hint">
-                {selectedMethodDetails.summary}
+                {calculationMethodSummary(t, selectedMethodDetails)}
               </p>
             </div>
 
@@ -821,16 +888,16 @@ export default function App() {
 
             {Math.abs(userCoords?.lat ?? 0) > 48 && (
               <div className="setting-group">
-                <label className="setting-label">High Latitude Rule</label>
+                <label className="setting-label">{t('settings.highLatitudeRule')}</label>
                 <select
                   className="method-select"
                   value={settings.prayer.highLatitudeRule}
                   onChange={e => updatePrayerSetting('highLatitudeRule', e.target.value)}
                 >
-                  <option value="">Method default</option>
-                  <option value="MiddleOfTheNight">Middle of the night</option>
-                  <option value="SeventhOfTheNight">Seventh of the night</option>
-                  <option value="TwilightAngle">Twilight angle</option>
+                  <option value="">{t('settings.highLatitudeRule.default')}</option>
+                  <option value="MiddleOfTheNight">{t('settings.highLatitudeRule.middle')}</option>
+                  <option value="SeventhOfTheNight">{t('settings.highLatitudeRule.seventh')}</option>
+                  <option value="TwilightAngle">{t('settings.highLatitudeRule.angle')}</option>
                 </select>
               </div>
             )}
@@ -841,7 +908,7 @@ export default function App() {
               <div className="offset-list">
                 {PRAYERS.map(prayer => (
                   <div key={prayer.key} className="offset-row">
-                    <span>{prayer.name}</span>
+                    <span>{prayerLabel(t, prayer.key)}</span>
                     <div className="stepper">
                       <button onClick={() => updateManualOffset(prayer.key, settings.prayer.manualOffsets[prayer.key] - 1)}>−</button>
                       <input
@@ -870,8 +937,8 @@ export default function App() {
               <button
                 className={`icon-action ${showSearch ? 'active' : ''}`}
                 onClick={() => setShowSearch(s => !s)}
-                title="Search city"
-                aria-label="Search city"
+                title={t('search.title')}
+                aria-label={t('search.title')}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -880,15 +947,15 @@ export default function App() {
               <button
                 className="icon-action"
                 onClick={handleLocate}
-                title="Use my location"
-                aria-label="Use my location"
+                title={t('search.useLocation')}
+                aria-label={t('search.useLocation')}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z"/>
                   <circle cx="12" cy="9" r="2.5"/>
                 </svg>
               </button>
-              <button className="icon-action" onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings">
+              <button className="icon-action" onClick={() => setShowSettings(true)} title={t('settings.title')} aria-label={t('settings.title')}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="3"/>
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -934,7 +1001,7 @@ export default function App() {
         {loading && (
           <div className="status-msg">
             <div className="spinner" />
-            <p>Loading prayer times…</p>
+            <p>{t('loading.prayerTimes')}</p>
           </div>
         )}
 
@@ -942,7 +1009,7 @@ export default function App() {
           <div className="error-box">
             <div className="error-icon">😕</div>
             <div className="error-title">{error}</div>
-            <div className="error-hint">💡 Try "Makkah", "Istanbul", "Cairo, Egypt"</div>
+            <div className="error-hint">{t('error.searchHint')}</div>
           </div>
         )}
 
@@ -1017,7 +1084,7 @@ export default function App() {
 
                     <div className="countdown-hero-names">
                       <span className="countdown-name-ar">{nextPrayerData.arabic}</span>
-                      <span className="countdown-name-en">{nextPrayerData.name}</span>
+                      <span className="countdown-name-en">{prayerLabel(t, nextPrayerData.key)}</span>
                     </div>
                     <div className="countdown-hero-label">{t('countdown.timeRemaining')}</div>
                     <div className="countdown-digits">
@@ -1077,7 +1144,7 @@ export default function App() {
                           <div className="prayer-icon">{p.icon}</div>
                           <div>
                             <div className="prayer-name">
-                              {p.name}
+                              {prayerLabel(t, p.key)}
                               {isNext && <span className="next-badge">{t('label.next')}</span>}
                               {isActive && !isNext && <span className="active-badge">{t('label.current')}</span>}
                             </div>
@@ -1112,12 +1179,13 @@ export default function App() {
                 weeklyData={weeklyData}
                 loading={weeklyLoading}
                 use24h={settings.use24h}
+                t={t}
               />
             )}
 
             {/* Qibla tab */}
             {activeTab === 'qibla' && (
-              <QiblaCompass userCoords={userCoords} onLocate={handleLocate} />
+              <QiblaCompass userCoords={userCoords} onLocate={handleLocate} t={t} />
             )}
 
             {/* Hijri tab */}
@@ -1125,6 +1193,7 @@ export default function App() {
               <HijriCalendar
                 offsetDays={settings.hijriOffset}
                 onOffsetChange={value => updateSetting('hijriOffset', value)}
+                t={t}
               />
             )}
 
@@ -1140,7 +1209,7 @@ export default function App() {
 
         <div className="footer">
           {t('footer.poweredBy')} <a href="https://aladhan.com/prayer-times-api" target="_blank" rel="noreferrer">Aladhan API</a> ·
-          {' '}{t('footer.audioBy')} <a href="https://islamic.network" target="_blank" rel="noreferrer">Islamic Network</a>
+          {' '}{t('footer.audioBy')} <a href="https://www.islamcan.com/audio/adhan" target="_blank" rel="noreferrer">islamcan.com</a>
         </div>
       </div>
     </div>

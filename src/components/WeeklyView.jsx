@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
 import { formatTime, PRAYERS } from '../utils/prayers';
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const OBLIGATORY = PRAYERS.filter(p => p.obligatory);
 
-export default function WeeklyView({ weeklyData, loading, use24h }) {
+export default function WeeklyView({ weeklyData, loading, use24h, t }) {
   const [selectedDay, setSelectedDay] = useState(null);
 
   if (loading) {
     return (
       <div className="status-msg">
         <div className="spinner" />
-        <p>Loading weekly schedule…</p>
+        <p>{t('weekly.loading')}</p>
       </div>
     );
   }
@@ -19,7 +18,7 @@ export default function WeeklyView({ weeklyData, loading, use24h }) {
   if (!weeklyData) {
     return (
       <div className="status-msg">
-        <p>No weekly data available.</p>
+        <p>{t('weekly.empty')}</p>
       </div>
     );
   }
@@ -34,13 +33,13 @@ export default function WeeklyView({ weeklyData, loading, use24h }) {
 
   return (
     <div className="weekly-wrap">
-      <h2 className="weekly-title">7-Day Schedule</h2>
+      <h2 className="weekly-title">{t('weekly.title')}</h2>
 
       {/* Day selector strip */}
       <div className="day-strip">
         {week.map((day, i) => {
           const dateObj = new Date(day.date.gregorian.date.split('-').reverse().join('-'));
-          const dayLabel = DAYS[dateObj.getDay()] ?? '–';
+          const dayLabel = t(`weekday.short.${dateObj.getDay()}`);
           const dayNum = day.date.gregorian.day;
           const isToday = i === 0;
           return (
@@ -49,7 +48,7 @@ export default function WeeklyView({ weeklyData, loading, use24h }) {
               className={`day-btn ${selectedDay === i ? 'selected' : ''} ${isToday ? 'today' : ''}`}
               onClick={() => setSelectedDay(selectedDay === i ? null : i)}
             >
-              <span className="day-label">{isToday ? 'Today' : dayLabel}</span>
+              <span className="day-label">{isToday ? t('label.today') : dayLabel}</span>
               <span className="day-num">{dayNum}</span>
             </button>
           );
@@ -69,7 +68,7 @@ export default function WeeklyView({ weeklyData, loading, use24h }) {
             {OBLIGATORY.map(p => (
               <div key={p.key} className="day-detail-row">
                 <span className="day-detail-icon">{p.icon}</span>
-                <span className="day-detail-name">{p.name}</span>
+                <span className="day-detail-name">{t(`prayer.${p.key}`)}</span>
                 <span className="day-detail-time">
                   {formatTime(focusDay.timings[p.key], use24h)}
                 </span>
@@ -84,16 +83,16 @@ export default function WeeklyView({ weeklyData, loading, use24h }) {
         <table className="weekly-table">
           <thead>
             <tr>
-              <th>Day</th>
+              <th>{t('weekly.day')}</th>
               {OBLIGATORY.map(p => (
-                <th key={p.key}>{p.icon} {p.name}</th>
+                <th key={p.key}>{p.icon} {t(`prayer.${p.key}`)}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {week.map((day, i) => {
               const dateObj = new Date(day.date.gregorian.date.split('-').reverse().join('-'));
-              const dayLabel = DAYS[dateObj.getDay()] ?? '–';
+              const dayLabel = t(`weekday.short.${dateObj.getDay()}`);
               const isToday = i === 0;
               return (
                 <tr
@@ -102,7 +101,7 @@ export default function WeeklyView({ weeklyData, loading, use24h }) {
                   onClick={() => setSelectedDay(selectedDay === i ? null : i)}
                 >
                   <td className="week-day-cell">
-                    <span className="week-day-name">{isToday ? 'Today' : dayLabel}</span>
+                    <span className="week-day-name">{isToday ? t('label.today') : dayLabel}</span>
                     <span className="week-day-date">{day.date.gregorian.day}</span>
                   </td>
                   {OBLIGATORY.map(p => (

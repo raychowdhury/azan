@@ -2,8 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { toHijri } from '../features/hijri/converter';
 import { eventForHijriDate } from '../features/hijri/events';
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
 function buildMonth(offsetDays) {
   const today = new Date();
   const start = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -27,7 +25,7 @@ function buildMonth(offsetDays) {
   return cells;
 }
 
-export default function HijriCalendar({ offsetDays = 0, onOffsetChange }) {
+export default function HijriCalendar({ offsetDays = 0, onOffsetChange, t }) {
   const [selectedCell, setSelectedCell] = useState(null);
   const cells = useMemo(() => buildMonth(offsetDays), [offsetDays]);
   const todayHijri = toHijri(new Date(), offsetDays);
@@ -37,12 +35,12 @@ export default function HijriCalendar({ offsetDays = 0, onOffsetChange }) {
     <div className="hijri-wrap">
       <div className="feature-header-row">
         <div>
-          <h2 className="weekly-title">Hijri Calendar</h2>
+          <h2 className="weekly-title">{t('hijri.title')}</h2>
           <p className="feature-subtitle">
-            {todayHijri.day} {todayHijri.monthNameEn} {todayHijri.year} AH
+            {t('hijri.date', { day: todayHijri.day, month: todayHijri.monthNameEn, year: todayHijri.year })}
           </p>
         </div>
-        <div className="offset-control" aria-label="Hijri date offset">
+        <div className="offset-control" aria-label={t('hijri.offset')}>
           <button onClick={() => onOffsetChange(Math.max(-2, offsetDays - 1))}>−</button>
           <span>{offsetDays > 0 ? `+${offsetDays}` : offsetDays}</span>
           <button onClick={() => onOffsetChange(Math.min(2, offsetDays + 1))}>+</button>
@@ -50,7 +48,9 @@ export default function HijriCalendar({ offsetDays = 0, onOffsetChange }) {
       </div>
 
       <div className="calendar-grid">
-        {WEEKDAYS.map(day => <div key={day} className="calendar-weekday">{day}</div>)}
+        {Array.from({ length: 7 }).map((_, day) => (
+          <div key={day} className="calendar-weekday">{t(`weekday.short.${day}`)}</div>
+        ))}
         {cells.map((cell, index) => (
           <button
             key={`${cell.date.toISOString()}-${index}`}
@@ -71,7 +71,7 @@ export default function HijriCalendar({ offsetDays = 0, onOffsetChange }) {
             <h3>{selected.event.nameEn}</h3>
             <p className="event-ar">{selected.event.nameAr}</p>
             <p className="feature-subtitle">
-              {selected.hijri.day} {selected.hijri.monthNameEn} {selected.hijri.year} AH
+              {t('hijri.date', { day: selected.hijri.day, month: selected.hijri.monthNameEn, year: selected.hijri.year })}
             </p>
           </div>
         </div>

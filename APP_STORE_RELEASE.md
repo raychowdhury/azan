@@ -8,8 +8,8 @@
 - Primary language: English
 - Category: Lifestyle
 - Age rating: 4+
-- Version: `1.0`
-- Build: `1`
+- Version: `1.2.0`
+- Build: `2`
 
 ## Description
 
@@ -27,7 +27,7 @@ Daily prayer times, weekly schedules, reminders, and Qibla direction for your lo
 
 ## What's New
 
-Initial App Store release.
+v1.2.0 stabilization release: notification reliability hardening, Arabic coverage improvements, privacy copy alignment, and quality gates.
 
 ## Review Notes
 
@@ -35,13 +35,14 @@ No account is required. To test location-based prayer times, grant location perm
 
 ## App Privacy Answers
 
-- Data collection: The app uses location on-device to calculate prayer times and Qibla direction.
+- Data collection: The app uses location for prayer times, approximate place name, distance to Makkah, and Qibla direction.
 - Tracking: No.
 - Third-party advertising: No.
 - Account creation: No.
 - Contact info collection: No.
-- Diagnostics collection: No custom analytics.
+- Diagnostics collection: Privacy-limited crash and reliability diagnostics may be used to troubleshoot app failures, notification scheduling, location permission, Qibla orientation, and audio playback failures.
 - Precise location: Used only when the user taps the location button and grants permission.
+- Third-party services: Prayer time requests may use Aladhan API. Optional streaming Adhan playback may use islamcan.com when a streaming source is selected. Bundled beep/silent options do not stream Adhan audio.
 
 ## Screenshot Checklist
 
@@ -69,4 +70,3 @@ In Xcode:
 3. Select `Any iOS Device`.
 4. Product > Archive.
 5. Distribute App > App Store Connect > Upload.
-

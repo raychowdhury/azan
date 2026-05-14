@@ -115,7 +115,7 @@ export default function Tasbih({ target, onTargetChange }) {
             onChange={e => selectDhikr(e.target.value)}
           >
             {DHIKR_PRESETS.map(d => (
-              <option key={d.id} value={d.id}>{d.label}</option>
+              <option key={d.id} value={d.id}>{t(`tasbih.dhikr.${d.id}`)}</option>
             ))}
           </select>
         </label>
@@ -125,7 +125,7 @@ export default function Tasbih({ target, onTargetChange }) {
       <button className="tasbih-button" onClick={increment}>
         <span className="tasbih-count">{count}</span>
         {target > 0 && <span className="tasbih-target">/ {target}</span>}
-        <span className="tasbih-label">{dhikr.label}</span>
+        <span className="tasbih-label">{t(`tasbih.dhikr.${dhikr.id}`)}</span>
         {target > 0 && <span className="tasbih-progress" style={{ width: `${progress}%` }} />}
       </button>
 

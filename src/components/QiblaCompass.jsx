@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { calculateQibla } from '../utils/prayers';
+import { reportError, reportEvent } from '../utils/monitoring';
 
-export default function QiblaCompass({ userCoords, onLocate }) {
+export default function QiblaCompass({ userCoords, onLocate, t }) {
   const [qiblaAngle, setQiblaAngle] = useState(null);
   const [deviceHeading, setDeviceHeading] = useState(null);
   const [orientationSupported, setOrientationSupported] = useState(null);
@@ -50,6 +51,7 @@ export default function QiblaCompass({ userCoords, onLocate }) {
   async function requestOrientation() {
     try {
       const perm = await DeviceOrientationEvent.requestPermission();
+      reportEvent('qibla_orientation_permission', { status: perm });
       if (perm === 'granted') {
         const handler = (e) => {
           if (e.webkitCompassHeading !== undefined) {
@@ -59,21 +61,23 @@ export default function QiblaCompass({ userCoords, onLocate }) {
         };
         window.addEventListener('deviceorientation', handler);
       }
-    } catch {}
+    } catch (error) {
+      reportError(error, { feature: 'qibla_orientation_permission' });
+    }
   }
 
   if (!userCoords) {
     return (
       <div className="qibla-empty">
         <div className="qibla-empty-icon">🧭</div>
-        <p className="qibla-empty-title">Location Required</p>
-        <p className="qibla-empty-text">Qibla direction needs your coordinates.</p>
+        <p className="qibla-empty-title">{t('qibla.locationRequired')}</p>
+        <p className="qibla-empty-text">{t('qibla.locationText')}</p>
         <button className="btn btn-search" onClick={onLocate}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z"/>
             <circle cx="12" cy="9" r="2.5"/>
           </svg>
-          Use My Location
+          {t('search.useLocation')}
         </button>
       </div>
     );
@@ -88,17 +92,17 @@ export default function QiblaCompass({ userCoords, onLocate }) {
   return (
     <div className="qibla-wrap">
       <div className="qibla-header">
-        <h2 className="qibla-title">Qibla Direction</h2>
+        <h2 className="qibla-title">{t('qibla.title')}</h2>
         {distance && (
           <p className="qibla-distance">
-            {distance} km from Makkah
+            {t('qibla.distance', { distance })}
           </p>
         )}
       </div>
 
       {orientationSupported === false && (
         <button className="btn btn-locate qibla-perm-btn" onClick={requestOrientation}>
-          Enable Compass
+          {t('qibla.enableCompass')}
         </button>
       )}
 
@@ -138,16 +142,16 @@ export default function QiblaCompass({ userCoords, onLocate }) {
 
       <div className="qibla-angle">
         {qiblaAngle !== null && (
-          <span>{Math.round(qiblaAngle)}° from North</span>
+          <span>{t('qibla.angleFromNorth', { angle: Math.round(qiblaAngle) })}</span>
         )}
         {deviceHeading !== null && (
-          <span className="qibla-heading"> · Heading: {Math.round(deviceHeading)}°</span>
+          <span className="qibla-heading"> · {t('qibla.heading', { heading: Math.round(deviceHeading) })}</span>
         )}
       </div>
 
       {!deviceHeading && (
         <p className="qibla-note">
-          Point your phone North and align the arrow toward the Kaaba icon.
+          {t('qibla.note')}
         </p>
       )}
     </div>
