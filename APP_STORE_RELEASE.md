@@ -8,26 +8,38 @@
 - Primary language: English
 - Category: Lifestyle
 - Age rating: 4+
-- Version: `1.2.0`
-- Build: `2`
+- Version: `1.3.0`
+- Build: `1`
 
 ## Description
 
-Azan Times provides daily Islamic prayer times, weekly schedules, and Qibla direction in a focused mobile experience.
+Azan Times provides daily Islamic prayer times, weekly schedules, Qibla direction, a Hijri calendar, a tasbih counter, and a nearby-mosques finder — in a private, ad-free experience.
 
-Search by city or use your current location to calculate local prayer times. The app includes Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha, weekly prayer schedules, optional prayer reminders, and a Qibla compass.
+Search by city or use your current location to calculate local prayer times for Fajr, Sunrise, Dhuhr, Asr, Maghrib, and Isha. Optional pre-prayer reminders. Full Adhan audio is bundled and plays locally — no third-party CDN. Find nearby mosques using OpenStreetMap, save your home mosque, and view community-verified iqamah times when available.
+
+No accounts. No ads. No tracking. No analytics. Your data stays on your device.
+
+## Subtitle
+
+Private. Adhan. Nearby Mosques.
 
 ## Keywords
 
-azan, prayer times, salah, salat, qibla, islamic, muslim, fajr, maghrib, mosque
+mosque,masjid,iqamah,jumuah,salah,namaz,adhan,athan,qibla,prayer,quran,muslim,islam,ramadan,hijri
 
 ## Promotional Text
 
-Daily prayer times, weekly schedules, reminders, and Qibla direction for your location.
+Find nearby mosques, get accurate prayer times worldwide, hear the Adhan — all without ads, tracking, or accounts.
 
-## What's New
+## What's New (1.3.0)
 
-v1.2.0 stabilization release: notification reliability hardening, Arabic coverage improvements, privacy copy alignment, and quality gates.
+v1.3 — Nearby Mosques
+- Find mosques near you, see distance, get directions
+- Save your home mosque, view iqamah and Jumu'ah times
+- Full Adhan now bundled (public-domain recordings, plays offline)
+- Hijri calendar moved to a quick tap on the date
+- Faster search, smarter caching, refined iOS layout
+- Still zero tracking, zero ads — your data stays on your device
 
 ## Review Notes
 
@@ -35,26 +47,32 @@ No account is required. To test location-based prayer times, grant location perm
 
 ## App Privacy Answers
 
-- Data collection: The app uses location for prayer times, approximate place name, distance to Makkah, and Qibla direction.
+- Data collection: The app uses location for prayer times, approximate place name, distance to Makkah, Qibla direction, and to discover nearby mosques.
 - Tracking: No.
 - Third-party advertising: No.
 - Account creation: No.
-- Contact info collection: No.
+- Contact info collection: No, except optional contact field on a public mosque submission form (only sent if user types it).
 - Diagnostics collection: Privacy-limited crash and reliability diagnostics may be used to troubleshoot app failures, notification scheduling, location permission, Qibla orientation, and audio playback failures.
-- Precise location: Used only when the user taps the location button and grants permission.
-- Third-party services: Prayer time requests may use Aladhan API. Optional streaming Adhan playback may use islamcan.com when a streaming source is selected. Bundled beep/silent options do not stream Adhan audio.
+- Precise location: Used only when the user taps the location button or opens the Nearby Mosques tab, and grants permission.
+- Third-party services:
+  - Aladhan API for prayer times (city or coordinates).
+  - Nominatim (OpenStreetMap) for city autocomplete suggestions.
+  - OpenStreetMap Overpass API for nearby mosque discovery (coordinates + radius only).
+  - All Adhan audio is bundled with the app and plays locally — no third-party audio CDN.
 
-## Screenshot Checklist
+## Screenshot Checklist (1.3 update)
 
-For the first release, provide iPhone screenshots:
+iPhone 6.7" / 6.9" set (required). Take in light + dark if you want both:
 
-- Home with New York prayer times loaded.
-- Search panel open.
-- Weekly schedule.
-- Qibla compass.
-- Settings panel.
+1. **Today** tab with countdown hero, Hijri chip, full prayer list.
+2. **Nearby Mosques** with at least 3 result cards (Directions / Open in Maps visible).
+3. **Qibla compass** with needle pointing.
+4. **Weekly** schedule view.
+5. **Settings** showing Azan Audio toggle + Doha reciter chosen.
 
-Apple currently accepts a single required iPhone screenshot set for newer device sizes, but create at least 3-5 screenshots for a better listing.
+Tip: highlight the new Mosques feature in screenshot #2 — that's the differentiator for 1.3.
+
+iPad screenshots optional but earn featuring eligibility.
 
 ## Local Release Commands
 
