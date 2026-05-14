@@ -52,7 +52,16 @@ export function getNextPrayer(timings) {
     const pTime = parseTime(timings[p.key]);
     if (pTime > now) return p.key;
   }
-  return null;
+  // After Isha — roll over to tomorrow's Fajr
+  return timings.Fajr ? 'Fajr' : null;
+}
+
+// Returns a JS Date for the next prayer, accounting for after-Isha rollover.
+export function getNextPrayerDate(timings, key = getNextPrayer(timings)) {
+  if (!key || !timings[key]) return null;
+  const target = parseTime(timings[key]);
+  if (target <= new Date()) target.setDate(target.getDate() + 1);
+  return target;
 }
 
 export function getActivePrayer(timings) {

@@ -31,6 +31,7 @@ import HijriCalendar from './components/HijriCalendar';
 import QiblaCompass from './components/QiblaCompass';
 import Tasbih from './components/Tasbih';
 import WeeklyView from './components/WeeklyView';
+import NearbyMosques from './components/NearbyMosques';
 import { toHijri } from './features/hijri/converter';
 import { useT } from './i18n';
 import { reportError, reportEvent } from './utils/monitoring';
@@ -1057,7 +1058,7 @@ export default function App() {
 
             {/* Tabs */}
             <div className="tabs">
-              {['today', 'weekly', 'qibla', 'hijri', 'tasbih'].map(tab => (
+              {['today', 'weekly', 'qibla', 'mosques', 'hijri', 'tasbih'].map(tab => (
                 <button
                   key={tab}
                   className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
@@ -1186,6 +1187,16 @@ export default function App() {
             {/* Qibla tab */}
             {activeTab === 'qibla' && (
               <QiblaCompass userCoords={userCoords} onLocate={handleLocate} t={t} />
+            )}
+
+            {/* Mosques tab */}
+            {activeTab === 'mosques' && (
+              <NearbyMosques
+                userCoords={userCoords}
+                onLocate={(coords) => {
+                  if (coords) setUserCoords(coords);
+                }}
+              />
             )}
 
             {/* Hijri tab */}
