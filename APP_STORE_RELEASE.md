@@ -8,8 +8,8 @@
 - Primary language: English
 - Category: Lifestyle
 - Age rating: 4+
-- Version: `1.3.0`
-- Build: `1`
+- Version: `1.3.1`
+- Build: `2`
 
 ## Description
 
@@ -30,6 +30,13 @@ mosque,masjid,iqamah,jumuah,salah,namaz,adhan,athan,qibla,prayer,quran,muslim,is
 ## Promotional Text
 
 Find nearby mosques, get accurate prayer times worldwide, hear the Adhan — all without ads, tracking, or accounts.
+
+## What's New (1.3.1)
+
+v1.3.1 — Sky of day
+- Background now tracks the sun through your location's prayer periods — dawn, sunrise, noon, afternoon, sunset, night
+- First-run welcome screen now has Search and Use my location buttons so you can get started right away
+- Stars on Fajr and Isha skies for a calmer night view
 
 ## What's New (1.3.0)
 

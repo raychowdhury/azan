@@ -36,6 +36,7 @@ import CitySearchInput from './components/CitySearchInput';
 import { toHijri } from './features/hijri/converter';
 import { useT } from './i18n';
 import { reportError, reportEvent } from './utils/monitoring';
+import { getActiveSky } from './utils/sky';
 const isNative = Capacitor.isNativePlatform();
 const ReverseGeocoder = registerPlugin('ReverseGeocoder');
 const NOTIFICATION_ID_BASE = 4200;
@@ -256,6 +257,13 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', settings.theme);
   }, [settings.theme]);
+
+  // ── Apply sky (drives background gradient/orb from location's prayer times + now) ──
+  const activeSky = data ? getActiveSky(data.timings, now) : 'dhuhr';
+  useEffect(() => {
+    document.documentElement.setAttribute('data-sky', activeSky);
+    document.body.setAttribute('data-sky', activeSky);
+  }, [activeSky]);
 
   // ── Persist settings / method ────────────────────────────────────────────────
   useEffect(() => { localStorage.setItem('settings', JSON.stringify(settings)); }, [settings]);
@@ -693,8 +701,26 @@ export default function App() {
   ]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
+  const isNightSky = activeSky === 'fajr' || activeSky === 'isha';
   return (
     <div className="app">
+      {/* ── Sky background (location + time driven) ── */}
+      <div className="sky-layer" aria-hidden="true" />
+      <div className="sky-orb" aria-hidden="true" />
+      {isNightSky && (
+        <>
+          <div className="sky-star" style={{ top: '12%', left: '18%' }} />
+          <div className="sky-star" style={{ top: '20%', left: '72%' }} />
+          <div className="sky-star" style={{ top: '8%', left: '48%' }} />
+          <div className="sky-star" style={{ top: '28%', left: '34%' }} />
+          <div className="sky-star" style={{ top: '15%', left: '88%' }} />
+          <div className="sky-star" style={{ top: '32%', left: '8%' }} />
+          <div className="sky-star" style={{ top: '6%', left: '62%' }} />
+          <div className="sky-star" style={{ top: '24%', left: '54%' }} />
+        </>
+      )}
+      <div className="sky-veil" aria-hidden="true" />
+
       {/* ── Settings Panel ── */}
       {showHijri && (
         <div className="settings-overlay" onClick={() => setShowHijri(false)}>
@@ -1099,6 +1125,21 @@ export default function App() {
             <h2 className="welcome-title">{t('welcome.title')}</h2>
             <p className="welcome-text">{t('welcome.text')}</p>
             <div className="welcome-divider">── ✦ ──</div>
+            <div className="welcome-actions">
+              <button className="btn btn-search" onClick={() => setShowSearch(true)}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                {t('search.button')}
+              </button>
+              <button className="btn-secondary" onClick={handleLocate}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                  <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z"/>
+                  <circle cx="12" cy="9" r="2.5"/>
+                </svg>
+                {t('search.useLocation')}
+              </button>
+            </div>
           </div>
         )}
 
