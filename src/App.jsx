@@ -273,6 +273,7 @@ export default function App() {
   const azanTimers     = useRef([]);
   const audioRef       = useRef(null);
   const searchInputRef = useRef(null);
+  const notifSyncRef   = useRef({ key: null, ts: 0, inflight: false });
 
   // ── Apply theme ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -339,19 +340,42 @@ export default function App() {
     if (!data) return;
 
     if (isNative) {
-      if (settings.notifEnabled) {
-        const notificationCoords = lastSearch?.type === 'coords' ? userCoords : null;
-        scheduleNativeNotifications(data.timings, settings.notifications, notificationCoords)
-          .catch(error => reportError(error, { feature: 'notification_schedule_effect' }));
+      // Coalesce native scheduling — settings/data objects get new refs on
+      // every setSettings so this effect re-fires often. Skip when the
+      // meaningful inputs haven't changed, and never run two syncs at once.
+      const notificationCoords = lastSearch?.type === 'coords' ? userCoords : null;
+      const sig = JSON.stringify({
+        notifEnabled: settings.notifEnabled,
+        timings: data.timings,
+        notifications: settings.notifications,
+        coords: notificationCoords,
+      });
+      const state = notifSyncRef.current;
+      const fresh = state.key === sig && Date.now() - state.ts < 30_000;
+      if (state.inflight || fresh) {
+        // schedule timers below still runs (cheap, in-process)
       } else {
-        LocalNotifications.getPending()
-          .then(pending => pending.notifications
-            .filter(isScheduledPrayerNotification)
-            .map(n => ({ id: n.id })))
-          .then(notifications => {
-            if (notifications.length) return LocalNotifications.cancel({ notifications });
-          })
-          .catch(error => reportError(error, { feature: 'notification_cancel_disabled' }));
+        state.inflight = true;
+        const done = () => {
+          state.key = sig;
+          state.ts = Date.now();
+          state.inflight = false;
+        };
+        if (settings.notifEnabled) {
+          scheduleNativeNotifications(data.timings, settings.notifications, notificationCoords)
+            .catch(error => reportError(error, { feature: 'notification_schedule_effect' }))
+            .finally(done);
+        } else {
+          LocalNotifications.getPending()
+            .then(pending => pending.notifications
+              .filter(isScheduledPrayerNotification)
+              .map(n => ({ id: n.id })))
+            .then(notifications => {
+              if (notifications.length) return LocalNotifications.cancel({ notifications });
+            })
+            .catch(error => reportError(error, { feature: 'notification_cancel_disabled' }))
+            .finally(done);
+        }
       }
     }
 
