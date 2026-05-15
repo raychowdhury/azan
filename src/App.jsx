@@ -164,13 +164,29 @@ function isScheduledPrayerNotification(notification) {
     && notification.id < NOTIFICATION_ID_BASE + NOTIFICATION_ID_SPAN;
 }
 
+// Cache reverse-geocode results to stay under Apple's 50 req / 60 s throttle.
+// Round coords to ~100 m precision; same key + < 1 h old returns cached.
+const REVERSE_GEOCODE_TTL_MS = 60 * 60 * 1000;
+const reverseGeocodeCache = new Map();
+
+function reverseGeocodeKey(lat, lng) {
+  return `${lat.toFixed(3)},${lng.toFixed(3)}`;
+}
+
 async function nativeReverseGeocode(params) {
   if (!isNative || params.type !== 'coords') return null;
+  const key = reverseGeocodeKey(params.lat, params.lng);
+  const cached = reverseGeocodeCache.get(key);
+  if (cached && Date.now() - cached.ts < REVERSE_GEOCODE_TTL_MS) {
+    return cached.place;
+  }
   try {
-    return await ReverseGeocoder.reverseGeocode({
+    const place = await ReverseGeocoder.reverseGeocode({
       latitude: params.lat,
       longitude: params.lng,
     });
+    reverseGeocodeCache.set(key, { place, ts: Date.now() });
+    return place;
   } catch {
     return null;
   }
