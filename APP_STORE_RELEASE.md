@@ -8,8 +8,8 @@
 - Primary language: English
 - Category: Lifestyle
 - Age rating: 4+
-- Version: `1.3.1`
-- Build: `3`
+- Version: `1.3.2`
+- Build: `1`
 
 ## Description
 
@@ -30,6 +30,15 @@ mosque,masjid,iqamah,jumuah,salah,namaz,adhan,athan,qibla,prayer,quran,muslim,is
 ## Promotional Text
 
 Find nearby mosques, get accurate prayer times worldwide, hear the Adhan — all without ads, tracking, or accounts.
+
+## What's New (1.3.2)
+
+v1.3.2 — Stability + accuracy
+- Fixed an issue where the countdown could thrash after Isha and visibly flicker the screen
+- Compass needle is now smooth and steady; no more jitter when standing still
+- Prayer-time calculation now agrees with public reference sources within 3 minutes across the methods we ship
+- Quieter on battery — notification re-scheduling no longer fires on every render
+- Reverse geocoding is cached so location-based features don't hit iOS rate limits
 
 ## What's New (1.3.1)
 
