@@ -63,4 +63,7 @@ export default defineConfig({
       },
     }),
   ].filter(Boolean),
+  test: {
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.claude/worktrees/**'],
+  },
 })
