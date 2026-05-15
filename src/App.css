@@ -1693,6 +1693,23 @@ input:checked + .slider::before { transform: translateX(20px); background: #fff;
   opacity: 0.4;
 }
 
+.welcome-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 24px;
+  align-items: center;
+}
+.welcome-actions .btn,
+.welcome-actions .btn-secondary {
+  width: 100%;
+  max-width: 280px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
 /* ─── Weekly View ────────────────────────────────────────────────────────── */
 .weekly-wrap { animation: fadeUp 0.5s ease-out; }
 
@@ -1902,7 +1919,7 @@ input:checked + .slider::before { transform: translateX(20px); background: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.5s ease-out;
+  will-change: transform;
 }
 
 .compass-needle {

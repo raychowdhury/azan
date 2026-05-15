@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { PRAYERS, pad, parseTime, formatTime, getNextPrayer, getActivePrayer, getPrayerProgress } from './utils/prayers';
+import { PRAYERS, pad, parseTime, formatTime, getNextPrayer, getNextPrayerDate, getActivePrayer, getPrayerProgress } from './utils/prayers';
 import { fetchByCity, fetchByCoords, fetchWeeklyByCity, fetchWeeklyByCoords } from './utils/api';
 import {
   DEFAULT_PRAYER_SETTINGS,
@@ -11,6 +11,7 @@ import {
   computePrayerTimes,
   getCalculationMethodDetails,
   madhabToApiSchool,
+  methodForCountry,
   methodToApiId,
   normalizePrayerSettings,
 } from './features/prayer-times/calculation';
@@ -36,6 +37,7 @@ import CitySearchInput from './components/CitySearchInput';
 import { toHijri } from './features/hijri/converter';
 import { useT } from './i18n';
 import { reportError, reportEvent } from './utils/monitoring';
+import { getActiveSky } from './utils/sky';
 const isNative = Capacitor.isNativePlatform();
 const ReverseGeocoder = registerPlugin('ReverseGeocoder');
 const NOTIFICATION_ID_BASE = 4200;
@@ -162,18 +164,38 @@ function isScheduledPrayerNotification(notification) {
     && notification.id < NOTIFICATION_ID_BASE + NOTIFICATION_ID_SPAN;
 }
 
-async function nativeLocationLabel(params) {
-  if (!isNative || params.type !== 'coords') return searchLabel(params) || 'Current Location';
+// Cache reverse-geocode results to stay under Apple's 50 req / 60 s throttle.
+// Round coords to ~100 m precision; same key + < 1 h old returns cached.
+const REVERSE_GEOCODE_TTL_MS = 60 * 60 * 1000;
+const reverseGeocodeCache = new Map();
 
+function reverseGeocodeKey(lat, lng) {
+  return `${lat.toFixed(3)},${lng.toFixed(3)}`;
+}
+
+async function nativeReverseGeocode(params) {
+  if (!isNative || params.type !== 'coords') return null;
+  const key = reverseGeocodeKey(params.lat, params.lng);
+  const cached = reverseGeocodeCache.get(key);
+  if (cached && Date.now() - cached.ts < REVERSE_GEOCODE_TTL_MS) {
+    return cached.place;
+  }
   try {
     const place = await ReverseGeocoder.reverseGeocode({
       latitude: params.lat,
       longitude: params.lng,
     });
-    return place.displayName || [place.city, place.region, place.country].filter(Boolean).slice(0, 2).join(', ') || 'Current Location';
+    reverseGeocodeCache.set(key, { place, ts: Date.now() });
+    return place;
   } catch {
-    return searchLabel(params) || 'Current Location';
+    return null;
   }
+}
+
+async function nativeLocationLabel(params, place) {
+  if (!isNative || params.type !== 'coords') return searchLabel(params) || 'Current Location';
+  if (!place) return searchLabel(params) || 'Current Location';
+  return place.displayName || [place.city, place.region, place.country].filter(Boolean).slice(0, 2).join(', ') || 'Current Location';
 }
 
 function TabIcon({ name }) {
@@ -251,11 +273,19 @@ export default function App() {
   const azanTimers     = useRef([]);
   const audioRef       = useRef(null);
   const searchInputRef = useRef(null);
+  const notifSyncRef   = useRef({ key: null, ts: 0, inflight: false });
 
   // ── Apply theme ──────────────────────────────────────────────────────────────
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', settings.theme);
   }, [settings.theme]);
+
+  // ── Apply sky (drives background gradient/orb from location's prayer times + now) ──
+  const activeSky = data ? getActiveSky(data.timings, now) : 'dhuhr';
+  useEffect(() => {
+    document.documentElement.setAttribute('data-sky', activeSky);
+    document.body.setAttribute('data-sky', activeSky);
+  }, [activeSky]);
 
   // ── Persist settings / method ────────────────────────────────────────────────
   useEffect(() => { localStorage.setItem('settings', JSON.stringify(settings)); }, [settings]);
@@ -286,10 +316,18 @@ export default function App() {
 
     if (!np) return;
 
+    // Hoist the target so we don't recompute it every tick. getNextPrayerDate
+    // rolls Fajr to +1 day when the user opens the app after Isha, which keeps
+    // diff positive and prevents a refetch loop overnight.
+    const target = getNextPrayerDate(data.timings, np);
+    let refetchScheduled = false;
     const tick = () => {
-      const target = parseTime(data.timings[np]);
+      if (!target) return;
       const diff = Math.floor((target - new Date()) / 1000);
       if (diff <= 0) {
+        if (refetchScheduled) return;
+        refetchScheduled = true;
+        clearInterval(countdownRef.current);
         if (lastSearch) performSearch(lastSearch, false);
         return;
       }
@@ -310,19 +348,42 @@ export default function App() {
     if (!data) return;
 
     if (isNative) {
-      if (settings.notifEnabled) {
-        const notificationCoords = lastSearch?.type === 'coords' ? userCoords : null;
-        scheduleNativeNotifications(data.timings, settings.notifications, notificationCoords)
-          .catch(error => reportError(error, { feature: 'notification_schedule_effect' }));
+      // Coalesce native scheduling — settings/data objects get new refs on
+      // every setSettings so this effect re-fires often. Skip when the
+      // meaningful inputs haven't changed, and never run two syncs at once.
+      const notificationCoords = lastSearch?.type === 'coords' ? userCoords : null;
+      const sig = JSON.stringify({
+        notifEnabled: settings.notifEnabled,
+        timings: data.timings,
+        notifications: settings.notifications,
+        coords: notificationCoords,
+      });
+      const state = notifSyncRef.current;
+      const fresh = state.key === sig && Date.now() - state.ts < 30_000;
+      if (state.inflight || fresh) {
+        // schedule timers below still runs (cheap, in-process)
       } else {
-        LocalNotifications.getPending()
-          .then(pending => pending.notifications
-            .filter(isScheduledPrayerNotification)
-            .map(n => ({ id: n.id })))
-          .then(notifications => {
-            if (notifications.length) return LocalNotifications.cancel({ notifications });
-          })
-          .catch(error => reportError(error, { feature: 'notification_cancel_disabled' }));
+        state.inflight = true;
+        const done = () => {
+          state.key = sig;
+          state.ts = Date.now();
+          state.inflight = false;
+        };
+        if (settings.notifEnabled) {
+          scheduleNativeNotifications(data.timings, settings.notifications, notificationCoords)
+            .catch(error => reportError(error, { feature: 'notification_schedule_effect' }))
+            .finally(done);
+        } else {
+          LocalNotifications.getPending()
+            .then(pending => pending.notifications
+              .filter(isScheduledPrayerNotification)
+              .map(n => ({ id: n.id })))
+            .then(notifications => {
+              if (notifications.length) return LocalNotifications.cancel({ notifications });
+            })
+            .catch(error => reportError(error, { feature: 'notification_cancel_disabled' }))
+            .finally(done);
+        }
       }
     }
 
@@ -513,7 +574,28 @@ export default function App() {
         result = await fetchByCoords(params.lat, params.lng, method, school);
         result = buildComputedDay(result, { lat: params.lat, lng: params.lng }, settings.prayer);
         setUserCoords({ lat: params.lat, lng: params.lng });
-        resolvedParams = { ...params, label: await nativeLocationLabel(params) };
+        const place = await nativeReverseGeocode(params);
+        resolvedParams = {
+          ...params,
+          label: await nativeLocationLabel(params, place),
+          countryCode: place?.countryCode || params.countryCode,
+        };
+        // Auto-pick calculation method from country, but never overwrite a
+        // method the user already explicitly confirmed.
+        const cc = resolvedParams.countryCode;
+        if (cc) {
+          const suggested = methodForCountry(cc);
+          if (suggested) {
+            setSettings((s) => {
+              if (s.prayer.methodAutoConfirmed) return s;
+              if (s.prayer.methodId === suggested) return s;
+              return {
+                ...s,
+                prayer: normalizePrayerSettings({ ...s.prayer, methodId: suggested }),
+              };
+            });
+          }
+        }
       }
       setData(result);
       setLastSearch(resolvedParams);
@@ -693,8 +775,28 @@ export default function App() {
   ]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
+  const isNightSky = activeSky === 'fajr' || activeSky === 'isha';
   return (
     <div className="app">
+      {/* ── Sky background (location + time driven) ── */}
+      <div className="sky-layer" aria-hidden="true" />
+      <div className="sky-orb" aria-hidden="true" />
+      {isNightSky && Array.from({ length: 18 }).map((_, i) => (
+        <div
+          key={i}
+          className="sky-star"
+          aria-hidden="true"
+          style={{
+            top: `${4 + ((i * 37) % 60)}%`,
+            left: `${4 + ((i * 71) % 92)}%`,
+            width: i % 4 === 0 ? 3 : 2,
+            height: i % 4 === 0 ? 3 : 2,
+            opacity: 0.3 + ((i * 53) % 50) / 100,
+          }}
+        />
+      ))}
+      <div className="sky-veil" aria-hidden="true" />
+
       {/* ── Settings Panel ── */}
       {showHijri && (
         <div className="settings-overlay" onClick={() => setShowHijri(false)}>
@@ -936,7 +1038,10 @@ export default function App() {
               <select
                 className="method-select"
                 value={settings.prayer.methodId}
-                onChange={e => updatePrayerSetting('methodId', e.target.value)}
+                onChange={e => setSettings(s => ({
+                  ...s,
+                  prayer: normalizePrayerSettings({ ...s.prayer, methodId: e.target.value, methodAutoConfirmed: true }),
+                }))}
               >
                 {METHOD_OPTIONS.map(m => (
                   <option key={m.id} value={m.id}>{calculationMethodOptionLabel(t, m.id)}</option>
@@ -1099,6 +1204,21 @@ export default function App() {
             <h2 className="welcome-title">{t('welcome.title')}</h2>
             <p className="welcome-text">{t('welcome.text')}</p>
             <div className="welcome-divider">── ✦ ──</div>
+            <div className="welcome-actions">
+              <button className="btn btn-search" onClick={() => setShowSearch(true)}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                {t('search.button')}
+              </button>
+              <button className="btn-secondary" onClick={handleLocate}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                  <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z"/>
+                  <circle cx="12" cy="9" r="2.5"/>
+                </svg>
+                {t('search.useLocation')}
+              </button>
+            </div>
           </div>
         )}
 

@@ -8,7 +8,7 @@
 - Primary language: English
 - Category: Lifestyle
 - Age rating: 4+
-- Version: `1.3.0`
+- Version: `1.3.2`
 - Build: `1`
 
 ## Description
@@ -30,6 +30,23 @@ mosque,masjid,iqamah,jumuah,salah,namaz,adhan,athan,qibla,prayer,quran,muslim,is
 ## Promotional Text
 
 Find nearby mosques, get accurate prayer times worldwide, hear the Adhan — all without ads, tracking, or accounts.
+
+## What's New (1.3.2)
+
+v1.3.2 — Stability + accuracy
+- Fixed an issue where the countdown could thrash after Isha and visibly flicker the screen
+- Compass needle is now smooth and steady; no more jitter when standing still
+- Prayer-time calculation now agrees with public reference sources within 3 minutes across the methods we ship
+- Quieter on battery — notification re-scheduling no longer fires on every render
+- Reverse geocoding is cached so location-based features don't hit iOS rate limits
+
+## What's New (1.3.1)
+
+v1.3.1 — Sky of day + smarter defaults
+- Background now tracks the sun through your location's prayer periods — dawn, sunrise, noon, afternoon, sunset, night
+- Prayer times now auto-pick the right calculation method for your country on first locate (ISNA for North America, Umm al-Qura for Saudi, Karachi for South Asia, Egyptian for MENA, Diyanet for Turkey, Singapore method for SE Asia, etc.)
+- First-run welcome screen now has Search and Use my location buttons so you can get started right away
+- Stars on Fajr and Isha skies for a calmer night view
 
 ## What's New (1.3.0)
 

@@ -1,12 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { calculateQibla } from '../utils/prayers';
 import { reportError, reportEvent } from '../utils/monitoring';
+
+// Circular low-pass smoothing factor (0 = no smoothing, 1 = full).
+// 0.15 gives a calm, lag-free needle on iOS at 30-60 Hz.
+const HEADING_SMOOTHING = 0.15;
+
+function shortestAngleDelta(from, to) {
+  let delta = ((to - from + 540) % 360) - 180;
+  return delta;
+}
 
 export default function QiblaCompass({ userCoords, onLocate, t }) {
   const [qiblaAngle, setQiblaAngle] = useState(null);
   const [deviceHeading, setDeviceHeading] = useState(null);
   const [orientationSupported, setOrientationSupported] = useState(null);
   const [distance, setDistance] = useState(null);
+  const smoothedRef = useRef(null);
+  const rafRef = useRef(null);
+  const pendingHeadingRef = useRef(null);
 
   useEffect(() => {
     if (!userCoords) return;
@@ -26,26 +38,62 @@ export default function QiblaCompass({ userCoords, onLocate, t }) {
     setDistance(Math.round(km).toLocaleString());
   }, [userCoords]);
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.webkitCompassHeading !== undefined) {
-        setDeviceHeading(e.webkitCompassHeading);
-        setOrientationSupported(true);
-      } else if (e.alpha !== null) {
-        setDeviceHeading(360 - e.alpha);
-        setOrientationSupported(true);
-      }
-    };
-
-    if (window.DeviceOrientationEvent) {
-      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-        // iOS 13+ requires permission
-        setOrientationSupported(false); // will show button
-      } else {
-        window.addEventListener('deviceorientation', handler);
-        return () => window.removeEventListener('deviceorientation', handler);
-      }
+  // Read raw heading from event, store as "pending" to be smoothed on rAF.
+  function readHeading(e) {
+    if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+      return e.webkitCompassHeading;
     }
+    if (e.alpha !== null && e.alpha !== undefined) {
+      return (360 - e.alpha + 360) % 360;
+    }
+    return null;
+  }
+
+  function startSmoothingLoop() {
+    if (rafRef.current != null) return;
+    const tick = () => {
+      const target = pendingHeadingRef.current;
+      if (target != null) {
+        const current = smoothedRef.current;
+        if (current == null) {
+          smoothedRef.current = target;
+        } else {
+          const delta = shortestAngleDelta(current, target);
+          smoothedRef.current = (current + delta * HEADING_SMOOTHING + 360) % 360;
+        }
+        setDeviceHeading(smoothedRef.current);
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  }
+
+  function stopSmoothingLoop() {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }
+
+  function handleOrientation(e) {
+    const heading = readHeading(e);
+    if (heading == null) return;
+    pendingHeadingRef.current = heading;
+    setOrientationSupported(true);
+  }
+
+  useEffect(() => {
+    if (!window.DeviceOrientationEvent) return undefined;
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      setOrientationSupported(false); // gated — show enable button
+      return undefined;
+    }
+    window.addEventListener('deviceorientation', handleOrientation);
+    startSmoothingLoop();
+    return () => {
+      window.removeEventListener('deviceorientation', handleOrientation);
+      stopSmoothingLoop();
+    };
   }, []);
 
   async function requestOrientation() {
@@ -53,13 +101,8 @@ export default function QiblaCompass({ userCoords, onLocate, t }) {
       const perm = await DeviceOrientationEvent.requestPermission();
       reportEvent('qibla_orientation_permission', { status: perm });
       if (perm === 'granted') {
-        const handler = (e) => {
-          if (e.webkitCompassHeading !== undefined) {
-            setDeviceHeading(e.webkitCompassHeading);
-            setOrientationSupported(true);
-          }
-        };
-        window.addEventListener('deviceorientation', handler);
+        window.addEventListener('deviceorientation', handleOrientation);
+        startSmoothingLoop();
       }
     } catch (error) {
       reportError(error, { feature: 'qibla_orientation_permission' });
