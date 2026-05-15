@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { PRAYERS, pad, parseTime, formatTime, getNextPrayer, getActivePrayer, getPrayerProgress } from './utils/prayers';
+import { PRAYERS, pad, parseTime, formatTime, getNextPrayer, getNextPrayerDate, getActivePrayer, getPrayerProgress } from './utils/prayers';
 import { fetchByCity, fetchByCoords, fetchWeeklyByCity, fetchWeeklyByCoords } from './utils/api';
 import {
   DEFAULT_PRAYER_SETTINGS,
@@ -316,10 +316,18 @@ export default function App() {
 
     if (!np) return;
 
+    // Hoist the target so we don't recompute it every tick. getNextPrayerDate
+    // rolls Fajr to +1 day when the user opens the app after Isha, which keeps
+    // diff positive and prevents a refetch loop overnight.
+    const target = getNextPrayerDate(data.timings, np);
+    let refetchScheduled = false;
     const tick = () => {
-      const target = parseTime(data.timings[np]);
+      if (!target) return;
       const diff = Math.floor((target - new Date()) / 1000);
       if (diff <= 0) {
+        if (refetchScheduled) return;
+        refetchScheduled = true;
+        clearInterval(countdownRef.current);
         if (lastSearch) performSearch(lastSearch, false);
         return;
       }
