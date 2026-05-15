@@ -9,7 +9,7 @@
 - Category: Lifestyle
 - Age rating: 4+
 - Version: `1.3.1`
-- Build: `2`
+- Build: `3`
 
 ## Description
 
@@ -33,8 +33,9 @@ Find nearby mosques, get accurate prayer times worldwide, hear the Adhan — all
 
 ## What's New (1.3.1)
 
-v1.3.1 — Sky of day
+v1.3.1 — Sky of day + smarter defaults
 - Background now tracks the sun through your location's prayer periods — dawn, sunrise, noon, afternoon, sunset, night
+- Prayer times now auto-pick the right calculation method for your country on first locate (ISNA for North America, Umm al-Qura for Saudi, Karachi for South Asia, Egyptian for MENA, Diyanet for Turkey, Singapore method for SE Asia, etc.)
 - First-run welcome screen now has Search and Use my location buttons so you can get started right away
 - Stars on Fajr and Isha skies for a calmer night view
 
